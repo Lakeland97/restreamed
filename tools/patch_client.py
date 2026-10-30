@@ -213,6 +213,9 @@ SITES = (
     _s("cosmetic_clear_skip", 0x1405E7BBF, 0x005E6FBF, "e8bcd54a00", "9090909090",
        "skip the per-slot SetSkeletalMesh(null) that removes a mesh the cosmetics block just set"),
 
+    _s("cosmetics_all", 0x140A84A47, 0x00A83E47, "e8e46f0300", "e8d4feffff",
+       "list every cosmetic in the wardrobe instead of only inventory-owned ones (all 240)"),
+
     # --- HOME model -----------------------------------------------------------
     _s("mesh_gate_force", 0x1405EA31C, 0x005E971C, "7463", "eb63",
        "always enter the cosmetics mesh/AnimGraph block, even when the gender is unchanged"),
@@ -285,6 +288,12 @@ PROFILES = {
         "home-model",
         "client DRM cave plus the cosmetics fix: the HOME player model is dressed with the default set",
         CLIENT_SITES + ("cosmetic_clear_skip",),
+        False,
+    ),
+    "all-cosmetics": Profile(
+        "all-cosmetics",
+        "home-model plus the full wardrobe: every cosmetic is listed (equipping a non-default id still needs the ownership bypass)",
+        CLIENT_SITES + ("cosmetic_clear_skip", "cosmetics_all"),
         False,
     ),
     "host": Profile(
