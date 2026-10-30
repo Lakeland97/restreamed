@@ -652,6 +652,7 @@ OP_REPLIES = {
     }),
     "hostedServerHeartbeat": lambda: haxe_ser.result_success({}),
     "onEndMatch": lambda: haxe_ser.result_success({}),
+    "giveEndOfMatchRewards": lambda: haxe_ser.result_success({}),
     "hostHasJoined": lambda: haxe_ser.result_success({}),
     "getServerIp": lambda: _dsur(SESSION_CTX if "getServerIp" in OP_CTX_OPS() else None),
 }

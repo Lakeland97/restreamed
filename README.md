@@ -14,15 +14,14 @@ Works:
 - A client-hosted listen server on UDP 7777 that waits for a second player.
 - A second client joining by native travel, with round phases replicated to both peers.
 - Player identity and contestant registration in a match.
-- The full round lifecycle on the host, through MatchOver to the awards UI, then back to
-  `WaitingForPlayers` and the next round.
+- The full round lifecycle on the host, with timed rounds, through MatchOver to the awards UI, then
+  back to `WaitingForPlayers` and the next round.
 - A finished round records its winner and the score it carries into the match payload.
 - Practice, challenge and tutorial modes load and run locally. The tutorial is one-shot until
   its played flag is reset.
 
 Does not work:
 
-- The joined client is too slow to play.
 - Joining from a server-sent join URL; the client crashes.
 - The host has no appserver session, so entity lookups miss. The visible effect is cosmetic.
 
