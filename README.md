@@ -24,10 +24,10 @@ Works:
 Does not work:
 
 - Joining from a server-sent join URL; the client crashes.
-- The wardrobe slot pages. Opening CHARACTER and then a slot reports
-  `getSingleton cannot get a null templateID` in a handled dialog. This happens on the unpatched
-  `client` build too, so it is not caused by the wardrobe patches: the page needs an item template and
-  entity for the equipped and listed items, and the local server does not supply them yet.
+- Completing a wardrobe selection. With `all-cosmetics-equip` the slot pages open and list their
+  items, and picking one applies the new model, but the client then reports
+  `Entity __singleton__ does not exist in collection` in a handled dialog: the item the UI holds has
+  no entity in the player's container. The client stays up; the equip is not recorded.
 - The host has no appserver session, so entity lookups miss. The visible effect is cosmetic.
 
 Design notes, byte patches and open problems: [wiki](https://github.com/Lakeland97/restreamed/wiki).
@@ -104,8 +104,8 @@ Profiles:
             item templates from the server; see the limitation above).
   all-cosmetics-equip  the above plus two selection caves: an out-of-range or unowned pick reports
             the game's error instead of crashing, and a listed item applies the entity the UI
-            already holds. This does not open the slot pages, which need item templates from the
-            server (see the limitation above).
+            already holds. The slot pages open; completing a selection still reports the missing
+            singleton entity (see the limitation above).
   host      the full working host set: identity cave, post-match loop cave, round
             timer cave, the login/admission byte patches and the match-data patches.
   host-min  the same byte patches without any cave: no .rdata mapping, no stubs.

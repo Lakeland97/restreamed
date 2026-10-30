@@ -338,7 +338,7 @@ PROFILES = {
     ),
     "all-cosmetics-equip": Profile(
         "all-cosmetics-equip",
-        "all-cosmetics plus the wardrobe fixes: the slot pages open (empty ids take the no-template path), unowned/absent picks report the game's error instead of crashing, and a selected item applies the entity the UI holds",
+        "all-cosmetics plus the wardrobe fixes: the slot pages open (empty ids take the no-template path), unowned/absent picks report the game's error instead of crashing, and a selected item applies the entity the UI holds (the container still lacks that entity)",
         CLIENT_SITES + ("cosmetic_clear_skip", "no_loading_screen", "cosmetics_all",
                         "equip_oob_hook", "equip_fatal_cave", "equip_own_hook", "equip_own_cave",
                         "cosmetic_nullid_hook", "cosmetic_nullid_cave"),
