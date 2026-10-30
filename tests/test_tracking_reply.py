@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Tracking-reply envelope tests (R785 regression guard, recorded R966).
+"""Tracking-reply envelope tests (regression guard).
 
-`postTrackingInfo` is the op the client calls most (910 requests in the runtime log), and it is the
+`postTrackingInfo` is the op the client calls most, and it is the
 one place a wrong reply is *fatal*: a single-value body made the client's response layer read one
-value past the end -> `Invalid char \\0 at position 16` -> `Fatal error` (cf9.dmp, MODLOG R785).
+value past the end -> `Invalid char \\0 at position 16` -> `Fatal error` (seen in a client crash dump).
 
 The proven envelope is two values: a null echo, then a `model.Result` enum. These tests pin that
 shape and, as a negative control, prove the check discriminates against the known-fatal one-value
