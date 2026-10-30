@@ -27,7 +27,7 @@ class ProcessUrlReplyTest(unittest.TestCase):
                 "nwY12:model.ResultY7:Success:1"
                 "wY23:appserver.api.UrlActionY9:UJoinGame:1"
                 "oY4:hostY9:127.0.0.1Y4:porti7777Y5:partyY0:"
-                "Y13:playerSessionY8:client-1Y11:gameSessionR6g",
+                "Y13:playerSessionY8:client-1Y11:gameSessionR8g",
             )
         finally:
             for key, value in saved.items():

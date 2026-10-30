@@ -858,11 +858,16 @@ def process_url_join_reply():
     if kind == "denied":
         return ("n" + "w" + s.value("model.Result") + s.value("Success") + ":1"
                 + "w" + s.value("appserver.api.UrlAction") + s.value("UAccessDenied") + ":0")
+    # Serialize in emission order: the string table is built as values are written, and a
+    # back-reference is resolved against the client's wire-order table. Building the action before
+    # the Result prefix would intern "port" at index 6 while the client has "port" at 6 and the
+    # empty string at 8, so a later R6 for gameSession would decode as "port".
+    head = "n" + "w" + s.value("model.Result") + s.value("Success") + ":1"
     action = haxe_ser.RawFragment(
         "w" + s.value("appserver.api.UrlAction") + s.value("UJoinGame") + ":1"
         + s.value({"host": host, "port": port, "party": party,
                    "playerSession": player_session, "gameSession": game_session}))
-    return "n" + "w" + s.value("model.Result") + s.value("Success") + ":1" + str(action)
+    return head + str(action)
 
 
 OP_REPLIES = {
