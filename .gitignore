@@ -1,0 +1,17 @@
+game/
+decomp/
+runtime/
+__pycache__/
+*.pyc
+*.log
+.DS_Store
+*.dmp
+tools/procdump.exe
+
+# third-party tool binaries, fetched not vendored
+tools/defendnot/
+# never publish agent tooling or lab reports
+AGENTS*
+SUBAGENT_RULES*
+MODLOG.md
+.megaignore
