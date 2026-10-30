@@ -100,6 +100,12 @@ Profiles:
 A two-client test needs the pak URL patch on both copies, `client` on the joining
 copy and `host` on the hosting copy.
 
+The `host` build also needs the listen map configuration, or it boots as a client:
+
+  [/Script/EngineSettings.GameMapsSettings]
+  GameDefaultMap=/Game/Maps/GameCon/GameCon_PersistentLevel
+  LocalMapOptions=?game=Tag?listen?IsHost=true?PlayerSessionID=host-1
+
 `--add NAME` and `--drop NAME` override single sites of a profile.
 
 The patcher holds only the original bytes it checks at each site and the stubs it
