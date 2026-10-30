@@ -76,10 +76,25 @@ Layout
 Running the mock
 ----------------
 
+The login flow was verified with the branch-B datastore reply enabled. Without these
+variables the `startSession` reply carries no entity or template (726 bytes instead of
+1053) and the client cannot seed its datastore:
+
+  export GUL_BIND=0.0.0.0
+  export GUL_BASE=http://127.0.0.1:8096
+  export GUL_DSUR_B_OPS=startSession
+  export GUL_DSUR_HX=1
+  export GUL_DSUR_HX_PURPOSE=game
+  export GUL_DSUR_HX_TEMPLATE=1
+  export GUL_HS_MODE=resultdsur
+  export GUL_CTX_PROVIDER_ENUM=1
+  export GUL_CTX_PROVIDER_IDX=2
   python3 mock_appserver.py 8096
 
-The server listens on the given port and answers the client's remoting calls. Point your
-patched client at the host running it.
+The server listens on the given port and answers the client's remoting calls. Set
+`GUL_BASE` to the address the client uses for the server; `127.0.0.1` when both run on
+the same machine. Each login gets its own display name (`Player1`, `Player2`, ...), so two
+clients show distinct names. Point your patched client at this host.
 
 Patching your client
 --------------------
