@@ -89,6 +89,7 @@ variables the `startSession` reply carries no entity or template (726 bytes inst
   export GUL_HS_MODE=resultdsur
   export GUL_CTX_PROVIDER_ENUM=1
   export GUL_CTX_PROVIDER_IDX=2
+  export GUL_USER_POLL_DELAY=10
   python3 mock_appserver.py 8096
 
 The server listens on the given port and answers the client's remoting calls. Set
