@@ -110,7 +110,7 @@ def reference_checksum(data):
 # Pinned by the reference implementation above (and by the shipped client:
 # the same routine reproduces the stored 0x03ef2055 of the verified host build).
 KNOWN_FIXTURE_CHECKSUM = 0x0000B18D
-KNOWN_PATCHED_CHECKSUM = 0x03AC05AA
+KNOWN_PATCHED_CHECKSUM = 0x03AC218C
 
 
 class ChecksumTest(unittest.TestCase):

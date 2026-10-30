@@ -193,6 +193,22 @@ SITES = (
        "c6413001488b4128488b154cd510004889c1e91cebb5fc",
        "keep the m_timeLimitReached latch, then gotoPhase('RoundEnding')"),
 
+
+    # --- client profile: DRM identity ---------------------------------------
+    # The client must pass the launcher check before it can log in. The cave
+    # builds DRMType.FakeID("restrea1") and hands it to getDRM's success path.
+    # It lives in the dead padding at the end of .text, so no header edit.
+    _s("drm_cave", 0x142CC2D95, 0x02CC2195,
+       "4883ec28488d0d13000000e89b566bfe4883c4284055534156e9e2589afd470055004c003a0044000d000a000000524883ec20488d0d14000000e86c566bfe4883c4205a488bc45556e9724953fe470055004c003a0043000d000a00000000000000000000000000",
+       "4883ec40c744242008000000c744242400000000488d0d4500000048894c242848c744243000000000488d542420488d4c2430488d05f14205feffd0488b4c243048894c2430488d542430488bcf488d051691c2fdffd04883c440e97972aefd7265737472656131",
+       "DRM cave: construct FakeID(restrea1) and return it through getDRM"),
+    _s("drm_entry_a", 0x1407AA07E, 0x007A947E, "488d0583ee", "e9128d5102",
+       "hook getDRM's no-identity path into the DRM cave"),
+    _s("drm_entry_b", 0x1407AA002, 0x007A9402, "488d05ffee", "e98e8d5102",
+       "hook getDRM's Steam-identity path into the DRM cave"),
+    _s("drm_entry_c", 0x1407AA09B, 0x007A949B, "4c8d45f048", "e9f58c5102",
+       "hook getDRM's shared error path into the DRM cave"),
+
     # --- optional sites, not part of a profile -------------------------------
     _s("matchover_m2", 0x140CC01BE, 0x00CBF5BE, "0f84d9050000", "909090909090",
        "drop the MatchOver +0x31 early exit; loop3 keeps it as the clock gate"),
@@ -246,7 +262,15 @@ class Profile(object):
         return "<Profile %s (%d sites)>" % (self.name, len(self.sites))
 
 
+CLIENT_SITES = ("drm_cave", "drm_entry_a", "drm_entry_b", "drm_entry_c")
+
 PROFILES = {
+    "client": Profile(
+        "client",
+        "DRM identity cave only: lets the stock login flow pass the launcher check",
+        CLIENT_SITES,
+        False,
+    ),
     "host": Profile(
         "host",
         "full working host set: identity cave, post-match loop cave, round timer cave, "

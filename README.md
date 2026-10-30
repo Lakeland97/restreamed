@@ -90,10 +90,15 @@ Patch a copy of your own executable; nothing patched is distributed here.
 
 Profiles:
 
+  client    passes the launcher check (DRM identity cave), so the stock login
+            flow can reach the local server.
   host      the full working host set: identity cave, post-match loop cave, round
             timer cave, the login/admission byte patches and the match-data patches.
   host-min  the same byte patches without any cave: no .rdata mapping, no stubs.
   list      print every site with its virtual address, file offset and purpose.
+
+A two-client test needs the pak URL patch on both copies, `client` on the joining
+copy and `host` on the hosting copy.
 
 `--add NAME` and `--drop NAME` override single sites of a profile.
 
