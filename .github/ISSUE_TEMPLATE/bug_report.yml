@@ -1,0 +1,53 @@
+name: Bug report
+description: Something in the server, tools, or client flow does not work
+title: "[bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Do not attach game files, extracted assets, or full decompiled dumps.
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: The observed result, with exact error text.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Run ...
+        2. Launch the client with ...
+        3. See ...
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      description: OS, Python version, client build, and whether the pak was patched.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log lines
+      description: Mock output and client log excerpts. Remove personal data.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I ran `python3 tests/run_all.py` and it passes.
+        - label: I did not attach game files or extracted assets.
+          required: true

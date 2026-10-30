@@ -1,0 +1,31 @@
+name: Feature or protocol report
+description: Suggest server work, tooling, or report protocol behavior
+title: "[feature] "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem does this solve
+      description: The client flow or workflow that is blocked or missing.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence
+      description: Log lines, packet captures, or code references. State what you observed versus inferred.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I did not attach game files or extracted assets.
+          required: true
