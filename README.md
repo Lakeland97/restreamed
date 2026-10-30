@@ -162,15 +162,13 @@ injects, and it refuses to write anything unless every original byte still match
 it reports the site that did not, so a different game build fails loudly instead of
 producing a half-patched executable. It also refuses to overwrite its own input.
 
-The caves live in the zero padding at the end of `.rdata`, so the patch raises that
-section's VirtualSize to its SizeOfRawData and sets MEM_EXECUTE. Every profile then
-recomputes the PE optional-header checksum, because the client's DRM path rejects a
-modified executable until the stored checksum matches the file:
+The caves live in the zero padding at the end of `.rdata` and `.pdata`, so the patch
+raises each used section's VirtualSize to its SizeOfRawData and sets MEM_EXECUTE. Every
+profile then recomputes the PE optional-header checksum so the binary stays self-consistent
+(hygiene, not a DRM gate: the identity check is launcher-based, and the shipped binary's
+own stored checksum is already stale):
 
   python3 tools/fix_pe_checksum.py Streamline.host.exe        # if you edited bytes yourself
-
-Without a correct checksum the client reports that it must be run through Steam or
-the Twitch launcher.
 
 The pak patch below is the other half: it redirects the client's backend URL.
 
