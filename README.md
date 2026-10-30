@@ -92,6 +92,7 @@ Profiles:
 
   client    passes the launcher check (DRM identity cave), so the stock login
             flow can reach the local server.
+  home-model  client plus the cosmetics fix: the HOME player model is dressed.
   host      the full working host set: identity cave, post-match loop cave, round
             timer cave, the login/admission byte patches and the match-data patches.
   host-min  the same byte patches without any cave: no .rdata mapping, no stubs.

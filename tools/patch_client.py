@@ -210,6 +210,15 @@ SITES = (
     _s("drm_entry_c", 0x1407AA09B, 0x007A949B, "4c8d45f048", "e9f58c5102",
        "hook getDRM's shared error path into the DRM cave"),
 
+    _s("cosmetic_clear_skip", 0x1405E7BBF, 0x005E6FBF, "e8bcd54a00", "9090909090",
+       "skip the per-slot SetSkeletalMesh(null) that removes a mesh the cosmetics block just set"),
+
+    # --- HOME model -----------------------------------------------------------
+    _s("mesh_gate_force", 0x1405EA31C, 0x005E971C, "7463", "eb63",
+       "always enter the cosmetics mesh/AnimGraph block, even when the gender is unchanged"),
+    _s("mesh_gate_nop", 0x1405EA37B, 0x005E977B, "0f85a7000000", "909090909090",
+       "alternative: drop the post-block early exit (same effect, 6 bytes)"),
+
     # --- optional sites, not part of a profile -------------------------------
     _s("matchover_m2", 0x140CC01BE, 0x00CBF5BE, "0f84d9050000", "909090909090",
        "drop the MatchOver +0x31 early exit; loop3 keeps it as the clock gate"),
@@ -270,6 +279,12 @@ PROFILES = {
         "client",
         "DRM identity cave only: lets the stock login flow pass the launcher check",
         CLIENT_SITES,
+        False,
+    ),
+    "home-model": Profile(
+        "home-model",
+        "client DRM cave plus the cosmetics fix: the HOME player model is dressed with the default set",
+        CLIENT_SITES + ("cosmetic_clear_skip",),
         False,
     ),
     "host": Profile(
