@@ -26,8 +26,9 @@ section's SizeOfRawData and sets MEM_EXECUTE so the caves are mapped and
 executable.
 
 Every patch changes the executable, so the PE optional-header checksum is
-recomputed after patching (tools/fix_pe_checksum.py): the client's DRM path
-refuses a modified binary until the stored checksum matches the file.
+recomputed after patching (tools/fix_pe_checksum.py) to keep the binary
+self-consistent. It is not a DRM gate: the identity check is launcher-based, and
+the shipped binary's own stored checksum is already stale.
 
 Profiles
 --------
