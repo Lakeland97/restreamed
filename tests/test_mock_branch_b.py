@@ -47,6 +47,10 @@ BASE_ENV = {
     "GUL_DSUR_HX": "1",
     "GUL_DSUR_HX_TEMPLATE": "1",
     "GUL_DSUR_HX_PURPOSE": "game",
+    # These tests describe one client. Pin the legacy identity so the per-session
+    # allocation (Player1/player1, ...) does not change every fixture's expected ids.
+    "GUL_IID": "devuser",
+    "GUL_NAME": "DevUser",
 }
 
 

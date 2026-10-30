@@ -3,11 +3,37 @@
 
 Iterate the reply shapes until the client walks the login state machine to the menu.
 Every request is logged raw AND decoded (via tools/haxe_ser.py).
+
+Per-client identity
+-------------------
+One mock can serve several clients (LAN test). Each login gets its own identity, keyed by
+data the client sends — never by source IP:
+
+  * the `trackingSessionID` in the `startSession` body, or the `streamline_session_id` the
+    client repeats on `postTrackingInfo`; and
+  * the `hns_session` cookie the mock issues (`GUL_COOKIES=1`), which carries that identity
+    through later keyless legs such as the PGS party and the user watcher.
+
+A keyless `startSession` still gets a fresh identity; with `GUL_COOKIES=1` the cookie on that
+reply carries it forward. The identity is stable for the rest of that login: `displayName`,
+`playerIID`, `accountID`, `pgsToken`, the `accounts` records and every PGS field come from
+the same record.
+
+Knobs (single-client test overrides):
+
+  GUL_NAME_PREFIX  display-name prefix for auto-assigned identities (default `Player`,
+                   giving `Player1`/`player1`, `Player2`/`player2`, ...)
+  GUL_IID          pin playerIID for every session (disables auto assignment)
+  GUL_NAME         pin displayName for every session (pair with GUL_IID)
+  GUL_JWT          pin the PGS token for every session
+  GUL_COOKIES=1    issue the per-identity `hns_session` cookie
 """
 import base64
+import hashlib
 import json
 import os
 import sys
+import threading
 import time
 import urllib.parse
 import re
@@ -39,17 +65,10 @@ SESSION_CTX = {
     "lastPlayerLevel": 1, "lastXpIntoLevel": 0, "lastXpForNextLevel": 100,
 }
 
-PGS_PARTY = {"id": "p1", "owner": "devuser", "partyMax": 4, "users": [],
-             "activePartyID": "", "invite_only": False}
 # The party payload is one of the few web legs the client fetches, and a party carries its members'
 # accounts: GUL_PGS_ACCOUNTS adds the account records under both the plain and the m_ name.
-if os.environ.get("GUL_PGS_ACCOUNTS", "1") == "1":
-    _pgs_accts = [{"provider": "twitch", "id": "devuser", "providerString": "twitch",
-                   "accountID": "a1", "displayName": "DevUser", "pgsToken": _DEV_JWT}]
-    PGS_PARTY["accounts"] = _pgs_accts
-    PGS_PARTY["m_accounts"] = list(_pgs_accts)
-    PGS_PARTY["users"] = [{"id": "devuser", "playerIID": "devuser", "accountID": "a1",
-                           "displayName": "DevUser", "provider": "twitch"}]
+# The party is built per request from the caller's identity (see `pgs_party()` below).
+_PGS_ACCOUNTS = os.environ.get("GUL_PGS_ACCOUNTS", "1") == "1"
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools"))
 import haxe_ser  # noqa: E402
@@ -153,6 +172,257 @@ if os.environ.get("GUL_CTX_DROP"):
     for _f in os.environ["GUL_CTX_DROP"].split(","):
         SESSION_CTX.pop(_f.strip(), None)
 
+# ---------------------------------------------------------------------------
+# Per-session identity
+#
+# The mock serves several clients from one process. A single global `devuser` made every
+# client the same player (and collided in the host's contestant map), so identity is now
+# allocated per login and looked up by a client-sent key:
+#
+#   * `trackingSessionID` (startSession) / `streamline_session_id` (postTrackingInfo),
+#   * the `hns_session` cookie the mock issues, or
+#   * `/users/<player>/...`, whose path names the identity directly.
+#
+# Source IP is never used. `GUL_IID`/`GUL_NAME` pin one identity for single-client tests.
+# ---------------------------------------------------------------------------
+_CTX_DROPPED = frozenset(
+    f.strip() for f in os.environ.get("GUL_CTX_DROP", "").split(",") if f.strip())
+
+_NAME_PREFIX = os.environ.get("GUL_NAME_PREFIX", "Player")
+_IID_OVERRIDE = os.environ.get("GUL_IID") or ""
+_NAME_OVERRIDE = os.environ.get("GUL_NAME") or ""
+_JWT_OVERRIDE = os.environ.get("GUL_JWT") or ""
+
+_identity_lock = threading.Lock()
+_identities = {}          # lookup key -> identity
+_identity_by_iid = {}     # playerIID -> identity
+_identity_by_name = {}    # displayName -> identity
+_identity_seq = 0
+CURRENT_IDENTITY = None
+
+
+def _slug(text):
+    return re.sub(r"[^a-z0-9]+", "", text.lower()) or "player"
+
+
+def _identity_jwt(iid):
+    if _JWT_OVERRIDE:
+        return _JWT_OVERRIDE
+    payload = json.dumps({"user": iid}, separators=(",", ":")).encode("utf-8")
+    return "x." + base64.urlsafe_b64encode(payload).decode() + ".z"
+
+
+def _new_identity_locked(key):
+    global _identity_seq
+    _identity_seq += 1
+    number = _identity_seq
+    iid = _slug(_NAME_PREFIX) + str(number)
+    ident = {
+        "key": key,
+        "iid": iid,
+        "name": "%s%d" % (_NAME_PREFIX, number),
+        "accountID": "a%d" % number,
+        "jwt": _identity_jwt(iid),
+        "cookie": "sess-" + hashlib.sha1(
+            ("%s:%d" % (key, number)).encode()).hexdigest()[:24],
+    }
+    _identity_by_iid.setdefault(iid, ident)
+    _identity_by_name.setdefault(ident["name"], ident)
+    # Bind the cookie we will issue for this identity, so later keyless legs resolve it even
+    # though the login request itself carried no cookie.
+    _identities["cookie:" + ident["cookie"]] = ident
+    return ident
+
+
+def _identity_for_key(key):
+    with _identity_lock:
+        ident = _identities.get(key)
+        if ident is None:
+            ident = _new_identity_locked(key)
+            _identities[key] = ident
+        return ident
+
+
+def _override_identity():
+    iid = _IID_OVERRIDE or "devuser"
+    name = _NAME_OVERRIDE or "DevUser"
+    return {"key": "override", "iid": iid, "name": name, "accountID": "a1",
+            "jwt": _identity_jwt(iid), "cookie": "dev1"}
+
+
+_DEFAULT_IDENTITY = _override_identity() if (_IID_OVERRIDE or _NAME_OVERRIDE) else {
+    "key": "default", "iid": "devuser", "name": "DevUser", "accountID": "a1",
+    "jwt": _identity_jwt("devuser"), "cookie": "dev1"}
+
+
+def current_identity():
+    if CURRENT_IDENTITY is not None:
+        return CURRENT_IDENTITY
+    if _IID_OVERRIDE or _NAME_OVERRIDE:
+        return _override_identity()
+    return _DEFAULT_IDENTITY
+
+
+def _iid():
+    return current_identity()["iid"]
+
+
+def _name():
+    return current_identity()["name"]
+
+
+def _account_id():
+    return current_identity()["accountID"]
+
+
+def _jwt():
+    return current_identity()["jwt"]
+
+
+def _account_record(ident, provider="twitch"):
+    return {"provider": provider, "id": ident["iid"], "providerString": "twitch",
+            "accountID": ident["accountID"], "displayName": ident["name"],
+            "pgsToken": ident["jwt"]}
+
+
+def session_context():
+    """The shared session context with this request's identity substituted in."""
+    ident = current_identity()
+    ctx = dict(SESSION_CTX)
+    fields = {
+        "displayName": ident["name"], "playerIID": ident["iid"],
+        "accountID": ident["accountID"], "pgsToken": ident["jwt"],
+        "appAccountID": ident["accountID"], "pgsPlayerID": ident["iid"],
+        "pgsPlayerToken": ident["jwt"],
+    }
+    for name, value in fields.items():
+        if name in ctx and name not in _CTX_DROPPED:
+            ctx[name] = value
+    provider = ctx.get("provider", "twitch")
+    account = _account_record(ident, provider)
+    if "accounts" in ctx and "accounts" not in _CTX_DROPPED:
+        ctx["accounts"] = [account]
+    if "m_accounts" in ctx and "m_accounts" not in _CTX_DROPPED:
+        ctx["m_accounts"] = [dict(account)]
+    if os.environ.get("GUL_CTX_ECHO_SESSION"):
+        sid = client_session_id()
+        if sid:
+            for name in ("sessionID", "m_sessionID", "trackingID", "m_trackingID",
+                         "tracking_id", "session_id"):
+                if name in ctx:
+                    ctx[name] = sid
+    return ctx
+
+
+def handshake_context():
+    """HANDSHAKE, with this request's identity when GUL_CTX_INTO_CONFIG is in play."""
+    if not os.environ.get("GUL_CTX_INTO_CONFIG") or not _RAW_REQ.get("identity_explicit"):
+        return HANDSHAKE
+    merged = dict(HANDSHAKE)
+    dynamic = session_context()
+    for name in ("displayName", "playerIID", "accountID", "pgsToken", "accounts",
+                 "m_accounts", "appAccountID", "pgsPlayerID", "pgsPlayerToken"):
+        if name in dynamic:
+            merged[name] = dynamic[name]
+    return merged
+
+
+def pgs_party():
+    ident = current_identity()
+    party = {"id": "p1", "owner": ident["iid"], "partyMax": 4, "users": [],
+             "activePartyID": "", "invite_only": False}
+    if _PGS_ACCOUNTS:
+        account = _account_record(ident)
+        party["accounts"] = [account]
+        party["m_accounts"] = [dict(account)]
+        party["users"] = [{"id": ident["iid"], "playerIID": ident["iid"],
+                           "accountID": ident["accountID"],
+                           "displayName": ident["name"], "provider": "twitch"}]
+    return party
+
+
+def _cookie_token():
+    for part in _RAW_REQ.get("cookie", "").split(";"):
+        key, sep, value = part.strip().partition("=")
+        if sep and key == "hns_session":
+            return value
+    return ""
+
+
+def _session_token():
+    try:
+        body = urllib.parse.unquote_plus(_RAW_REQ.get("body", ""))
+    except Exception:
+        return ""
+    for field in ("trackingSessionID", "streamline_session_id"):
+        # The wire form is `y<length>:<value>`; honour the declared length so a following
+        # serialization byte cannot become part of the key.
+        match = re.search(field + r"y(\d+):", body)
+        if not match:
+            continue
+        length = int(match.group(1))
+        token = body[match.end():match.end() + length]
+        if re.fullmatch(r"[A-Za-z0-9_-]+", token):
+            return token
+    return ""
+
+
+def _path_identity(path):
+    match = re.search(r"/users/([^/]+)/updates(?:/|$)", path)
+    if not match:
+        return None
+    wanted = urllib.parse.unquote(match.group(1))
+    with _identity_lock:
+        return _identity_by_iid.get(wanted) or _identity_by_name.get(wanted)
+
+
+def _select_identity(path, op):
+    """Pick this request's identity from a client-sent key; never from the source IP."""
+    global CURRENT_IDENTITY
+    CURRENT_IDENTITY = None
+    _RAW_REQ["send_cookie"] = False
+    _RAW_REQ["identity_explicit"] = False
+    if _IID_OVERRIDE or _NAME_OVERRIDE:
+        CURRENT_IDENTITY = _override_identity()
+        _RAW_REQ["send_cookie"] = True
+        _RAW_REQ["identity_explicit"] = True
+        return CURRENT_IDENTITY
+
+    cookie = _cookie_token()
+    token = _session_token()
+    ident = None
+    if token:
+        ident = _identity_for_key("session:" + token)
+        if cookie:
+            with _identity_lock:
+                _identities["cookie:" + cookie] = ident
+    elif cookie:
+        ident = _identity_for_key("cookie:" + cookie)
+    if ident is not None:
+        CURRENT_IDENTITY = ident
+        _RAW_REQ["send_cookie"] = True
+        _RAW_REQ["identity_explicit"] = True
+        return ident
+
+    if op in ("startSession", "startSessionForFakePlayerID"):
+        # A login with no tracking id still gets a fresh identity; the cookie issued on
+        # this reply is what carries it to the next request.
+        ident = _identity_for_key("login:%d" % time.time_ns())
+        CURRENT_IDENTITY = ident
+        _RAW_REQ["send_cookie"] = True
+        _RAW_REQ["identity_explicit"] = True
+        return ident
+
+    ident = _path_identity(path)
+    if ident is None:
+        with _identity_lock:
+            if len(_identity_by_iid) == 1:
+                ident = next(iter(_identity_by_iid.values()))
+    if ident is not None:
+        CURRENT_IDENTITY = ident
+    return ident
+
+
 if os.environ.get("GUL_FAKE_PLAYER"):
     HANDSHAKE["fakePlayerID"] = os.environ["GUL_FAKE_PLAYER"]
     HANDSHAKE["pgsDevToken"] = os.environ.get("GUL_JWT", "x.eyJ1c2VyIjoiZGV2dXNlciJ9.z")
@@ -203,12 +473,12 @@ def _track_reply():
         # the only "early and repeated" place branch-B elements can ride. Its reply is normally the same
         # branch-A envelope as doHandshake; this answers it through the op path instead, where the branch
         # choice (GUL_DSUR_B_OPS) and the element knobs apply. CURRENT_OP is already "postTrackingInfo".
-        return _dsur(SESSION_CTX)
+        return _dsur(session_context())
     if os.environ.get("GUL_TRACK_CTX"):
         # postTrackingInfo is the op the client calls most, and its reply is the one envelope proven to be
         # handled. Carrying the session context here tests whether this, rather than the op whose name
         # suggests it, is what seeds the session datastore.
-        return haxe_ser.handshake_result_dsur(SESSION_CTX)
+        return haxe_ser.handshake_result_dsur(session_context())
     return haxe_ser.handshake_result_dsur(None)
 
 
@@ -248,11 +518,6 @@ def _dsur(payload):
       GUL_DSUR_ENTITIES   JSON, what updatedEntities holds (only its LENGTH selects the branch)
       GUL_DSUR_BLOB_JSON  JSON, serialized into the entityTypeInfo string (the inflated payload)
     """
-    if os.environ.get("GUL_CTX_ECHO_SESSION"):
-        sid = client_session_id()
-        if sid:
-            for _k in ("sessionID", "m_sessionID", "trackingID", "m_trackingID", "tracking_id", "session_id"):
-                SESSION_CTX[_k] = sid
     direct_ops = os.environ.get("GUL_DSUR_DIRECT_OPS")
     if os.environ.get("GUL_DSUR_DIRECT") or (
             direct_ops is not None and CURRENT_OP in [o.strip() for o in direct_ops.split(",") if o.strip()]):
@@ -285,11 +550,11 @@ def _dsur(payload):
                 cont = hxinflate.Decl("model.component.container.ContainerComponent", custom=False,
                                       fields=["container_", "m_loadedEntities", "m_numLoadedEntities",
                                               "m_inflaterTypeCache"])
-                ent_body = [os.environ.get("GUL_IID", "devuser"), "player", {}, None, None, None, ""]
+                ent_body = [_iid(), "player", {}, None, None, None, ""]
                 ent_inst = hxinflate.Instance(values=ent_body, decl=ent4)
                 blob = hxinflate.type_cache([ent4, cont], purpose=None)
                 cont_inst = hxinflate.Instance(
-                    values=["gul", {os.environ.get("GUL_IID", "devuser"): ent_inst}, 1, blob],
+                    values=["gul", {_iid(): ent_inst}, 1, blob],
                     decl=cont)
                 ents = [hxinflate.object_stream(cont_inst)]
                 return haxe_ser.dsur_branch_b(payload, ents, blob, ())
@@ -299,11 +564,11 @@ def _dsur(payload):
                 # records. Push exactly that as its own element, alongside the safe player entity, so
                 # the value type is the one the config already uses.
                 ent3 = hxinflate.Decl("model.entity.ModelEntity", custom=True)
-                body3 = [os.environ.get("GUL_IID", "devuser"), "player", {}, None, None, None, ""]
-                acct = {"id": os.environ.get("GUL_IID", "devuser"),
-                        "accountID": "a1",
-                        "displayName": "DevUser",
-                        "pgsToken": os.environ.get("GUL_JWT", "x.eyJ1c2VyIjoiZGV2dXNlciJ9.z")}
+                body3 = [_iid(), "player", {}, None, None, None, ""]
+                acct = {"id": _iid(),
+                        "accountID": _account_id(),
+                        "displayName": _name(),
+                        "pgsToken": _jwt()}
                 blob = hxinflate.type_cache([ent3], purpose=None)
                 ents = [hxinflate.object_stream(hxinflate.Instance(values=body3, decl=ent3)),
                         hxinflate.object_stream([acct])]
@@ -343,10 +608,10 @@ def _dsur(payload):
                         # definition becomes a map from iid to the entity instance itself. The body
                         # stays at two values, which is the arity the client demands (R841).
                         ent_inst2 = hxinflate.Instance(
-                            values=[os.environ.get("GUL_IID", "devuser"), tid,
+                            values=[_iid(), tid,
                                     {}, None, None, None, ""], decl=ent2)
                         second = os.environ.get("GUL_DSUR_HX_PROP_SECOND")
-                        prop_values = [{os.environ.get("GUL_IID", "devuser"): ent_inst2},
+                        prop_values = [{_iid(): ent_inst2},
                                        json.loads(second) if second else None]
                     prop_inst = hxinflate.Instance(values=prop_values, decl=prop)
                     # FUN_1410583a0 iterates cdef.templateData as an Array and hands each
@@ -393,7 +658,7 @@ def _dsur(payload):
                 tid = os.environ.get("GUL_IID_TEMPLATE", "player")
                 tpl_inst = hxinflate.Instance(
                     values=[comp_defs, "", {}, os.environ.get("GUL_IID_TEMPLATE_BLOB", tid)], decl=tpl)
-                body2 = [os.environ.get("GUL_IID", "devuser"), tid, {}, None, None, None, ""]
+                body2 = [_iid(), tid, {}, None, None, None, ""]
                 ent_fields = os.environ.get("GUL_DSUR_HX_ENTITY_FIELDS")
                 if ent_fields:
                     # The entity's StringMap (body value 3) as *named fields*. The session-context
@@ -412,9 +677,9 @@ def _dsur(payload):
                                                   "linkedAccount", "overriddenPlayerIID", "renamedTo",
                                                   "pgsToken", "icons"])
                     minst = hxinflate.Instance(
-                        values=[None, os.environ.get("GUL_IID", "devuser"), False, None,
-                                os.environ.get("GUL_IID", "devuser"), None,
-                                os.environ.get("GUL_JWT", "x.eyJ1c2VyIjoiZGV2dXNlciJ9.z"), None],
+                        values=[None, _iid(), False, None,
+                                _iid(), None,
+                                _jwt(), None],
                         decl=mcls)
                     body2[2] = {"component.player.AccountComponent": minst}
                     extra_decls.append(mcls)
@@ -427,12 +692,12 @@ def _dsur(payload):
                                                   "linkedAccount", "overriddenPlayerIID", "renamedTo",
                                                   "pgsToken", "icons"])
                     iinst = hxinflate.Instance(
-                        values=[None, os.environ.get("GUL_IID", "devuser"), False, None,
-                                os.environ.get("GUL_IID", "devuser"), None,
-                                os.environ.get("GUL_JWT", "x.eyJ1c2VyIjoiZGV2dXNlciJ9.z"), None],
+                        values=[None, _iid(), False, None,
+                                _iid(), None,
+                                _jwt(), None],
                         decl=icls)
                     extra_decls.append(icls)
-                    body2 = [os.environ.get("GUL_IID", "devuser"), tid, {}, None, None,
+                    body2 = [_iid(), tid, {}, None, None,
                              json.loads(os.environ.get("GUL_DSUR_HX_N6", '["x"]')), iinst]
                 # ModelEntity.hxUnserialize reads exactly seven top-level values; the seventh is the
                 # entity's componentHash. When it equals the template's componentHash, awaken returns
@@ -520,11 +785,11 @@ def _dsur(payload):
                     fields=["accountProvider", "playerID", "isSecondaryAccount", "linkedAccount",
                             "overriddenPlayerIID", "renamedTo", "pgsToken", "icons"])
                 comp_inst = hxinflate.Instance(
-                    values=[None, os.environ.get("GUL_IID", "devuser"), False, None,
-                            os.environ.get("GUL_IID", "devuser"), None,
-                            os.environ.get("GUL_JWT", "x.eyJ1c2VyIjoiZGV2dXNlciJ9.z"), None],
+                    values=[None, _iid(), False, None,
+                            _iid(), None,
+                            _jwt(), None],
                     decl=comp)
-                body = [os.environ.get("GUL_IID", "devuser"),
+                body = [_iid(),
                         os.environ.get("GUL_IID_TEMPLATE", "player"), {}, None, None,
                         json.loads(os.environ.get("GUL_DSUR_HX_N6", '["x"]')), comp_inst]
                 body += [""] * int(os.environ.get("GUL_DSUR_HX_TAIL", "1"))
@@ -603,19 +868,19 @@ def process_url_join_reply():
 OP_REPLIES = {
     # Round 5: every XIAppServerPublic RPC result is wrapped in DataStoreUpdateResponse
     # (branch A: empty updatedEntities → returnVal passthrough).
-    "doHandshake": lambda: _dsur(HANDSHAKE),
+    "doHandshake": lambda: _dsur(handshake_context()),
     # The private appserver API (remoting.proxy.appserver.api.XIAppServerPrivate) declares a
     # fake-player path: startSessionForFakePlayerID, loadPlayerFromSession,
     # loadPlayerFromFakePlayerID and getAccountInfo. If the client selects that path (config
     # clientConfigManager.fakePlayerID), these are where the player and its account state belong, so
     # they share the same branch-B reply machinery as startSession.
-    "startSessionForFakePlayerID": lambda: _dsur(HANDSHAKE),
-    "loadPlayerFromFakePlayerID": lambda: _dsur(HANDSHAKE),
-    "loadPlayerFromSession": lambda: _dsur(HANDSHAKE),
+    "startSessionForFakePlayerID": lambda: _dsur(handshake_context()),
+    "loadPlayerFromFakePlayerID": lambda: _dsur(handshake_context()),
+    "loadPlayerFromSession": lambda: _dsur(handshake_context()),
     # UI-free autojoin: -RunURL=<value> reaches processUrl; tag 0 (UJoinGame) makes the
     # client ClientTravel to the host below. See runtime/PROCESSURL_JOIN.md.
     "processUrl": process_url_join_reply,
-    "getAccountInfo": lambda: _dsur(HANDSHAKE),
+    "getAccountInfo": lambda: _dsur(handshake_context()),
     # GUL_TRACKING=null → reply "nn" (void-style) for fan-out variants.
     # R785: the client's UE4Client_obj::handleResponse reads TWO values from every
     # remoting body (mirror of the request's own [null echo][payload] shape).
@@ -628,10 +893,10 @@ OP_REPLIES = {
     # Round 14 latch theory: the tracking response (arriving first) sets the done-latch on the
     # SHARED handleResponse context (param_1+0x18), silently swallowing the handshake response.
     # Delay it past the handshake's processing window.
-    "checkVersion": lambda: _dsur(SESSION_CTX if "checkVersion" in OP_CTX_OPS() else None),
-    "startSession": lambda: _dsur(SESSION_CTX),
+    "checkVersion": lambda: _dsur(session_context() if "checkVersion" in OP_CTX_OPS() else None),
+    "startSession": lambda: _dsur(session_context()),
     "clientHeartbeat": lambda: _dsur({"interval_sec": 60}),
-    "getConfig": lambda: _dsur(SESSION_CTX if "getConfig" in OP_CTX_OPS() else None),
+    "getConfig": lambda: _dsur(session_context() if "getConfig" in OP_CTX_OPS() else None),
     "getOpenServer": lambda: haxe_ser.result_success(
         HxEnum("appserver.api.OpenServerResponse", 0, args=[{
             "host": os.environ.get("GUL_GAME_HOST", "127.0.0.1"),
@@ -654,7 +919,7 @@ OP_REPLIES = {
     "onEndMatch": lambda: haxe_ser.result_success({}),
     "giveEndOfMatchRewards": lambda: haxe_ser.result_success({}),
     "hostHasJoined": lambda: haxe_ser.result_success({}),
-    "getServerIp": lambda: _dsur(SESSION_CTX if "getServerIp" in OP_CTX_OPS() else None),
+    "getServerIp": lambda: _dsur(session_context() if "getServerIp" in OP_CTX_OPS() else None),
 }
 
 
@@ -662,17 +927,13 @@ OP_REPLIES = {
 # string); the session context it then reads carries sessionID/trackingID, and the mock has been sending
 # placeholders ("s1"/"t1") that the client rejects as enum names. GUL_CTX_ECHO_SESSION reflects the client's
 # own id back in those fields, which is what a server would do.
-_RAW_REQ = {"body": ""}
+_RAW_REQ = {"body": "", "cookie": "", "send_cookie": False, "identity_explicit": False}
 _TRACK_PLAYER_PUSHED = False
 
 
 def client_session_id():
-    try:
-        body = urllib.parse.unquote_plus(_RAW_REQ.get("body", ""))
-    except Exception:
-        return ""
-    m = re.search(r"trackingSessionIDy\d+:([A-Za-z0-9_-]+)", body)
-    return m.group(1) if m else ""
+    """The login's tracking id, from either body field the client uses for it."""
+    return _session_token()
 
 
 def slog(line):
@@ -685,7 +946,7 @@ class Handler(BaseHTTPRequestHandler):
     # on keep-alive sockets and concurrent writes INTERLEAVE responses (the "Invalid char
     # \0 at position 615" bug — 615 bytes of mixed streams before a NUL).
     protocol_version = "HTTP/1.0"  # the era when extraction demonstrably worked
-    _lock = __import__("threading").Lock()
+    _lock = threading.Lock()
 
     def _reply(self, body: bytes, status=200, ctype="text/plain"):
         self.send_response(status)
@@ -706,8 +967,14 @@ class Handler(BaseHTTPRequestHandler):
         # so the debugger sees death between handleResponse entry and the body branch.
         # The remoting flow needs NO cookie — the earlier era (no Set-Cookie) proved the
         # extraction worked. Default to NO cookie; opt back in with GUL_COOKIES=1.
-        if os.environ.get("GUL_COOKIES", "0") != "0":
-            self.send_header("Set-Cookie", "hns_session=dev1; Path=/; HttpOnly")
+        #
+        # When enabled, the cookie carries this request's identity. It is only issued on a
+        # request that actually resolved an identity (a login, a tracking id, or a cookie), so
+        # a pre-login handshake cannot hand one client another client's session.
+        if os.environ.get("GUL_COOKIES", "0") != "0" and _RAW_REQ.get("send_cookie"):
+            ident = current_identity()
+            self.send_header("Set-Cookie",
+                             "hns_session=%s; Path=/; HttpOnly" % ident["cookie"])
         self.end_headers()
         self.wfile.write(body)
 
@@ -725,6 +992,7 @@ class Handler(BaseHTTPRequestHandler):
             _RAW_REQ["body"] = raw.decode("latin1")
         except Exception:
             pass
+        _RAW_REQ["cookie"] = self.headers.get("Cookie", "") or ""
         if raw and os.environ.get("GUL_LOG_REQ", "1") == "1":
             try:
                 slog("    REQ  %s -> %s" % (self.path, raw.decode("latin1")[:800]))
@@ -750,6 +1018,10 @@ class Handler(BaseHTTPRequestHandler):
         p = self.path.split("?")[0].rstrip("/")
         op = p.rsplit("/", 1)[-1] if p else ""
         globals()["CURRENT_OP"] = op
+        ident = _select_identity(p, op)
+        if op == "startSession" and ident is not None:
+            slog("    IDENTITY %s (playerIID=%s accountID=%s cookie=%s)"
+                 % (ident["name"], ident["iid"], ident["accountID"], ident["cookie"]))
         if op == "startSession":
             # A new login re-arms the one-shot post-login entity push.
             globals()["_TRACK_PLAYER_PUSHED"] = False
@@ -811,15 +1083,15 @@ class Handler(BaseHTTPRequestHandler):
                 # proven handshake envelope remains byte-for-byte unchanged.
                 branch_ops = os.environ.get("GUL_DSUR_B_OPS", "")
                 if "doHandshake" in [x.strip() for x in branch_ops.split(",") if x.strip()]:
-                    frag = _dsur(HANDSHAKE)
+                    frag = _dsur(handshake_context())
                 else:
-                    frag = haxe_ser.handshake_result_dsur(HANDSHAKE)
+                    frag = haxe_ser.handshake_result_dsur(handshake_context())
             elif op == "doHandshake" and os.environ.get("GUL_HS_MODE") == "declpair":
                 # Round 726b: [<V-form DSUR>][Result.Success(<T0 DSUR>)] (echo = the instance).
-                frag = haxe_ser.handshake_decl_plus_t0(HANDSHAKE)
+                frag = haxe_ser.handshake_decl_plus_t0(handshake_context())
             elif op == "doHandshake" and os.environ.get("GUL_HS_MODE") == "declinst":
                 # Round 723: decl + null + Success(string) + tokenless DSUR instance (fields+g).
-                frag = haxe_ser.handshake_decl_enum_inst(HANDSHAKE)
+                frag = haxe_ser.handshake_decl_enum_inst(handshake_context())
             elif op == "doHandshake" and os.environ.get("GUL_HS_MODE") == "decltrail":
                 # Round 716: decl + null slot + Success(string) + trailing n + @ position marker.
                 frag = haxe_ser.handshake_decln_trail("PROBE123")
@@ -899,19 +1171,20 @@ class Handler(BaseHTTPRequestHandler):
             # R789: the client JSON-parses this body and reads .body as the JWT. A bare JWT gave
             # 'Error while parsing json response: x.eyJ1c2VyIjoiZGV2dXNlciJ9.z for "auth/check?state=..."'
             # (LoginGameMode.hx:604) and then Result:AuthError. Wrap it.
-            payload = {"body": _DEV_JWT}
+            ident = current_identity()
+            payload = {"body": ident["jwt"]}
             if os.environ.get("GUL_AUTH_ACCOUNTS", "1") == "1":
                 # The auth check is where a client learns *which accounts* it can log in as (the client
                 # has checkForExistingTwitchAccount, onLinkAccountAuth and "requires account" paths), and
                 # the session context's accounts are exactly that list. Without them the session context
                 # has no accounts at all, and every read of the context's account field misses.
-                accts = [{"provider": "twitch", "id": "devuser", "providerString": "twitch",
-                          "accountID": "a1", "displayName": "DevUser", "pgsToken": _DEV_JWT}]
+                accts = [_account_record(ident)]
                 payload.update({
                     "accounts": accts, "m_accounts": list(accts),
-                    "provider": "twitch", "providerString": "twitch", "id": "devuser",
-                    "accountID": "a1", "displayName": "DevUser", "playerIID": "devuser",
-                    "pgsToken": _DEV_JWT,
+                    "provider": "twitch", "providerString": "twitch", "id": ident["iid"],
+                    "accountID": ident["accountID"], "displayName": ident["name"],
+                    "playerIID": ident["iid"],
+                    "pgsToken": ident["jwt"],
                 })
             slog("    (auth/check -> JSON with the account records)")
             self._reply(json.dumps(payload).encode(), ctype="application/json")
@@ -948,13 +1221,14 @@ class Handler(BaseHTTPRequestHandler):
                 next_stamp = max(1, requested)
             else:
                 next_stamp = max(1, requested + 1)
-            iid = os.environ.get("GUL_IID", "devuser")
+            ident = current_identity()
+            iid = ident["iid"]
             user = {
                 "update_stamp": next_stamp,
                 "id": iid,
                 "playerIID": iid,
-                "accountID": "a1",
-                "displayName": "DevUser",
+                "accountID": ident["accountID"],
+                "displayName": ident["name"],
                 "provider": "twitch",
                 "providerString": "twitch",
                 "active_party": "",
@@ -969,21 +1243,20 @@ class Handler(BaseHTTPRequestHandler):
             return
         if "/parties" in p or "active_party" in p or "/games/" in p or "/wagers" in p or "/polls" in p:
             slog(f"    (PGS leg {p} -> party JSON)")
-            self._reply(json.dumps(PGS_PARTY).encode(), ctype="application/json")
+            self._reply(json.dumps(pgs_party()).encode(), ctype="application/json")
             return
         if "/remoting-config" in p and os.environ.get("GUL_RCONF"):
             # The client's own field cluster puts /remoting-config beside playerIID, pgsToken,
             # accounts, displayName, accountID, provider - i.e. this leg is where the session context
             # (and its accounts) is fetched. Answer it with a JSON session context rather than {}.
             slog("    (remoting-config -> JSON session context with accounts)")
+            ident = current_identity()
             ctx = {
-                "playerIID": os.environ.get("GUL_IID", "devuser"),
-                "accounts": [{"provider": "twitch", "id": os.environ.get("GUL_IID", "devuser"),
-                              "accountID": "a1", "displayName": "DevUser",
-                              "pgsToken": _DEV_JWT}],
-                "pgsToken": _DEV_JWT,
-                "displayName": "DevUser",
-                "accountID": "a1",
+                "playerIID": ident["iid"],
+                "accounts": [_account_record(ident)],
+                "pgsToken": ident["jwt"],
+                "displayName": ident["name"],
+                "accountID": ident["accountID"],
                 "provider": "twitch",
             }
             self._reply(json.dumps(ctx).encode(), ctype="application/json")
