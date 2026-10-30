@@ -12,7 +12,7 @@ OUT="${OUT:-$HERE/overlay.dll}"
   "$HERE/overlay.cpp" \
   "$IMGUI/imgui.cpp" "$IMGUI/imgui_draw.cpp" "$IMGUI/imgui_tables.cpp" "$IMGUI/imgui_widgets.cpp" \
   "$IMGUI/backends/imgui_impl_win32.cpp" "$IMGUI/backends/imgui_impl_dx11.cpp" \
-  -ld3d11 -ldxgi -lwinhttp -lshcore -ldwmapi -ldxguid -luser32 -lgdi32 -limm32 -lole32 -luuid \
+  -ld3d11 -ldxgi -lwinhttp -L"${D3DCOMPILER_DIR:?set D3DCOMPILER_DIR to a dir containing libd3dcompiler47.a}" -ld3dcompiler47 -lshcore -ldwmapi -ldxguid -luser32 -lgdi32 -limm32 -lole32 -luuid \
   -o "$OUT"
 
 ls -lh "$OUT"
