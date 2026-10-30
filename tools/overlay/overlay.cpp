@@ -313,9 +313,27 @@ void Render() {
     ImGui_ImplDX11_RenderDrawData(ImGui::GetDrawData());
 }
 
+// A native-travel join never tells the client the map loaded, so its loading
+// screen stays. Arm the game's own latch and let its tick close the screen
+// (calling the close routine directly crashes the render thread).
+void ArmMapLoaded() {
+    static DWORD since = 0;
+    HMODULE base = GetModuleHandleW(nullptr);
+    auto at = [base](uintptr_t off) { return reinterpret_cast<uintptr_t>(base) + off; };
+    void** slot = reinterpret_cast<void**>(at(0x3BC5058));
+    if (!slot || !*slot) { since = 0; return; }
+    DWORD now = GetTickCount();
+    if (!since) { since = now; return; }
+    if (now - since < 8000) return;
+    auto set_map = reinterpret_cast<void (*)(void)>(at(0x7DA770));
+    set_map();
+    since = 0;
+}
+
 HRESULT WINAPI HookPresent(IDXGISwapChain* self, UINT sync, UINT flags) {
     if (!g_present) return E_FAIL;
     if (!g_imgui_ready) InitImGui(self);
+    ArmMapLoaded();
     if (g_imgui_ready && g_visible && g_device && g_context) {
         // The game unbinds its render target before Present, so bind the back
         // buffer ourselves or ImGui has nothing to draw into.
