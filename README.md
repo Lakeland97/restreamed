@@ -102,7 +102,8 @@ variables the `startSession` reply carries no entity or template (726 bytes inst
   export GUL_NOCL=0
   python3 mock_appserver.py 8096
 
-The server listens on the given port and answers the client's remoting calls. Set
+On Windows, set the same names with `set GUL_...=...` (or in the system environment) before running
+the command. The server listens on the given port and answers the client's remoting calls. Set
 `GUL_BASE` to the address the client uses for the server; `127.0.0.1` when both run on
 the same machine. Each login gets its own display name (`Player1`, `Player2`, ...), so two
 clients show distinct names. Point your patched client at this host.
