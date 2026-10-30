@@ -22,6 +22,8 @@ int g_server_count = 0;
 int g_click_count = 0;
 int g_panel = 0;   // 0 = servers, 1 = find, 2 = host
 void* g_menu_self = nullptr;
+DWORD g_join_at = 0;
+char g_game_dir[MAX_PATH] = {};
 DWORD g_last_fetch = 0;
 
 bool FetchRegistry(const char* host, int port, const char* path) {
@@ -220,9 +222,48 @@ void InstallMenuHooks() {
     PatchJump(at(0x630E50), reinterpret_cast<void*>(&HookHost));   // HomePlayMenu.onHost
 }
 
+bool WriteListenIni(char* out_path, size_t out_size) {
+    char tmp[MAX_PATH] = {};
+    GetTempPathA(MAX_PATH, tmp);
+    _snprintf(out_path, out_size, "%sstreamline_listen.ini", tmp);
+    FILE* f = fopen(out_path, "w");
+    if (!f) return false;
+    fputs("[/Script/EngineSettings.GameMapsSettings]\n"
+          "GameDefaultMap=/Game/Maps/GameCon/GameCon_PersistentLevel\n"
+          "LocalMapOptions=?game=Tag?listen?IsHost=true?PlayerSessionID=host-1\n", f);
+    fclose(f);
+    return true;
+}
+
+bool LaunchHost() {
+    char ini[MAX_PATH] = {};
+    if (!WriteListenIni(ini, sizeof(ini))) return false;
+    char exe[MAX_PATH] = {};
+    _snprintf(exe, sizeof(exe), "%sStreamline.host.exe", g_game_dir);
+    if (GetFileAttributesA(exe) == INVALID_FILE_ATTRIBUTES) return false;
+    char log[MAX_PATH] = {};
+    _snprintf(log, sizeof(log), "%sstreamline_host.log", g_game_dir);
+    char cmd[1024] = {};
+    _snprintf(cmd, sizeof(cmd),
+              "\"%s\" -NOSTEAM -NOFUEL -nullrhi -nosound -unattended -nosplash -port=7777 "
+              "-FORCELOGFLUSH -abslog=\"%s\" -EngineIni=\"%s\"",
+              exe, log, ini);
+    STARTUPINFOA si = {sizeof(si)};
+    PROCESS_INFORMATION pi = {};
+    if (!CreateProcessA(nullptr, cmd, nullptr, nullptr, FALSE, 0, nullptr, g_game_dir, &si, &pi)) return false;
+    CloseHandle(pi.hThread);
+    CloseHandle(pi.hProcess);
+    g_join_at = GetTickCount() + 30000;   // host boot takes ~25-30 s here
+    return true;
+}
+
 void Render() {
     if (!g_visible) return;
     if (GetTickCount() - g_last_fetch > 10000) FetchFromConfig();
+    if (g_join_at && GetTickCount() >= g_join_at) {
+        g_join_at = 0;
+        LocalTravel(L"127.0.0.1:7777?Version=HNS-release.2.7.31");
+    }
     ImGui_ImplDX11_NewFrame();
     ImGui_ImplWin32_NewFrame();
     ImGui::NewFrame();
@@ -234,9 +275,11 @@ void Render() {
         ImGui::TextUnformatted("Host settings (placeholder)");
         ImGui::Separator();
         ImGui::TextUnformatted("Start listen host on port 7777");
-        if (ImGui::Button("Start host", ImVec2(-1, 0))) {
+        if (ImGui::Button("Start host and join", ImVec2(-1, 0))) {
             ++g_click_count;
+            LaunchHost();
         }
+        if (g_join_at) ImGui::TextUnformatted("host starting, joining when it is up...");
     } else {
         ImGui::TextUnformatted("Community servers");
         ImGui::SameLine();
@@ -447,6 +490,9 @@ extern "C" __declspec(dllexport) int ovl_ready() {
 BOOL APIENTRY DllMain(HMODULE module, DWORD reason, LPVOID) {
     if (reason == DLL_PROCESS_ATTACH) {
         DisableThreadLibraryCalls(module);
+        GetModuleFileNameA(nullptr, g_game_dir, MAX_PATH);
+        char* slash = strrchr(g_game_dir, '\\');
+        if (slash) slash[1] = 0;
         CreateThread(nullptr, 0, InitThread, nullptr, 0, nullptr);
     }
     return TRUE;
