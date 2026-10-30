@@ -57,8 +57,9 @@ Layout
                              TCP-probe entries so dead servers drop out.
 
   tools/fix_pe_checksum.py   Recompute the PE optional-header checksum after patching the
-                             client executable. The client's DRM path refuses a modified
-                             executable until the checksum matches the file.
+                             client executable so the binary stays self-consistent. Not a
+                             DRM gate: the identity check is launcher-based, and the shipped
+                             binary's own stored checksum is already stale.
 
   tools/patch_client.py      Patch your own Streamline.exe into the host builds: the
                              login/admission byte patches, the identity cave, the
