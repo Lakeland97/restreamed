@@ -23,11 +23,13 @@ class ProcessUrlReplyTest(unittest.TestCase):
                   "GUL_JOIN_PARTY", "GUL_JOIN_GAMESESSION")}
         try:
             self.assertEqual(
-            mock_appserver.process_url_join_reply(),
+                mock_appserver.process_url_join_reply(),
                 "nwY12:model.ResultY7:Success:1"
-                "wY23:appserver.api.UrlActionY9:UJoinGame:1"
-                "oY4:hostY9:127.0.0.1Y4:porti7777Y5:partyY0:"
-                "Y13:playerSessionY8:client-1Y11:gameSessionR8g",
+                "VY42:appserver.remoting.DataStoreUpdateResponse:i-1:i0:i0:3:"
+                "Y15:updatedEntitiesY14:entityTypeInfoY9:returnVal:"
+                "ahY0:jY23:appserver.api.UrlAction:0:1"
+                "oY4:hostY9:127.0.0.1Y4:porti7777Y5:partyR6"
+                "Y13:playerSessionY8:client-1Y11:gameSessionR6gg",
             )
         finally:
             for key, value in saved.items():
