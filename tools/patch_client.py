@@ -234,6 +234,7 @@ SITES = (
     _s("mesh_gate_nop", 0x1405EA37B, 0x005E977B, "0f85a7000000", "909090909090",
        "alternative: drop the post-block early exit (same effect, 6 bytes)"),
 
+    # --- join: loading screen -------------------------------------------------
     # --- optional sites, not part of a profile -------------------------------
     _s("matchover_m2", 0x140CC01BE, 0x00CBF5BE, "0f84d9050000", "909090909090",
        "drop the MatchOver +0x31 early exit; loop3 keeps it as the clock gate"),
