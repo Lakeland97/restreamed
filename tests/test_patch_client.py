@@ -38,11 +38,13 @@ import fix_pe_checksum as fpc  # noqa: E402
 #   .text  file 0x400 .. 0x2cc2200   (VA 0x140001000 ..)
 #   .rdata file 0x2cc2200 .. 0x3ab7e00 (VA 0x142cc3000 ..)
 # with 260 bytes of .rdata raw data past its VirtualSize.
-IMAGE_SIZE = 0x3AB7E00
+IMAGE_SIZE = 0x3E20800
 TEXT_RAW, TEXT_RAWSIZE = 0x400, 0x2CC1E00
 TEXT_VA, TEXT_VSIZE = 0x1000, 0x2CC1D95
 RDATA_RAW, RDATA_RAWSIZE = 0x2CC2200, 0x00DF5C00
 RDATA_VA, RDATA_VSIZE = 0x2CC3000, 0x00DF5AFC
+PDATA_RAW, PDATA_RAWSIZE = 0x3BA9000, 0x277800
+PDATA_VA, PDATA_VSIZE = 0x3D3D000, 0x27765C
 IMAGE_BASE = 0x140000000
 
 
@@ -54,7 +56,7 @@ def make_pe(size=IMAGE_SIZE):
     struct.pack_into("<I", data, 0x3C, pe)
     data[pe:pe + 4] = b"PE\0\0"
     # COFF: machine, nsections, ..., SizeOfOptionalHeader, Characteristics
-    struct.pack_into("<HHIIIHH", data, pe + 4, 0x8664, 2, 0, 0, 0, 240, 0x22)
+    struct.pack_into("<HHIIIHH", data, pe + 4, 0x8664, 3, 0, 0, 0, 240, 0x22)
     opt = pe + 24
     struct.pack_into("<H", data, opt, 0x20B)
     struct.pack_into("<Q", data, opt + 24, IMAGE_BASE)
@@ -62,6 +64,7 @@ def make_pe(size=IMAGE_SIZE):
     for i, (name, va, vsize, raw, rawsize, chars) in enumerate((
         (b".text", TEXT_VA, TEXT_VSIZE, TEXT_RAW, TEXT_RAWSIZE, 0x60000020),
         (b".rdata", RDATA_VA, RDATA_VSIZE, RDATA_RAW, RDATA_RAWSIZE, 0x40000040),
+        (b".pdata", PDATA_VA, PDATA_VSIZE, PDATA_RAW, PDATA_RAWSIZE, 0x40000040),
     )):
         header = table + i * 40
         data[header:header + 8] = name
@@ -109,7 +112,7 @@ def reference_checksum(data):
 
 # Pinned by the reference implementation above (and by the shipped client:
 # the same routine reproduces the stored 0x03ef2055 of the verified host build).
-KNOWN_FIXTURE_CHECKSUM = 0x0000B18D
+KNOWN_FIXTURE_CHECKSUM = 0x00007B0D
 KNOWN_PATCHED_CHECKSUM = 0x03AC218C
 
 
@@ -244,13 +247,14 @@ class ProfileTest(unittest.TestCase):
         self.assertIn("no_loading_screen", pc.PROFILES["all-cosmetics"].site_names)
         self.assertIn("no_loading_screen", pc.PROFILES["all-cosmetics-equip"].site_names)
 
-    def test_all_cosmetics_equip_adds_the_selection_caves(self):
+    def test_all_cosmetics_equip_adds_the_selection_and_guard_caves(self):
         base = set(pc.PROFILES["all-cosmetics"].site_names)
         equip = set(pc.PROFILES["all-cosmetics-equip"].site_names)
         self.assertEqual(
             equip,
             base | {"equip_oob_hook", "equip_fatal_cave",
-                    "equip_own_hook", "equip_own_cave"},
+                    "equip_own_hook", "equip_own_cave",
+                    "cosmetic_nullid_hook", "cosmetic_nullid_cave"},
         )
         self.assertTrue(pc.PROFILES["all-cosmetics-equip"].maps_rdata_exec)
 
@@ -336,6 +340,31 @@ class ApplyTest(unittest.TestCase):
         rdata = [s for s in pc.sections(data) if s.name == ".rdata"][0]
         self.assertEqual(rdata.vsize, pc.RDATA_VIRTUALSIZE)
         self.assertTrue(pc._u32(data, rdata.header + 36) & pc.MEM_EXECUTE)
+
+    def test_equip_profile_maps_both_cave_sections(self):
+        data = fixture_copy()
+        pc.apply_patches(data, pc.PROFILES["all-cosmetics-equip"])
+        secs = {sec.name: sec for sec in pc.sections(data)}
+        for name in (".rdata", ".pdata"):
+            self.assertEqual(secs[name].vsize, pc.CAVE_SECTIONS[name][1])
+            self.assertTrue(pc._u32(data, secs[name].header + 36) & pc.MEM_EXECUTE)
+
+    def test_pdata_only_cave_leaves_rdata_alone(self):
+        data = fixture_copy()
+        prof = pc.compose("all-cosmetics-equip",
+                          drop=("equip_oob_hook", "equip_fatal_cave",
+                                "equip_own_hook", "equip_own_cave"))
+        pc.apply_patches(data, prof)
+        secs = {sec.name: sec for sec in pc.sections(data)}
+        self.assertEqual(secs[".pdata"].vsize, pc.CAVE_SECTIONS[".pdata"][1])
+        self.assertEqual(secs[".rdata"].vsize, pc.RDATA_VIRTUALSIZE_SHIPPED)
+        self.assertFalse(pc._u32(data, secs[".rdata"].header + 36) & pc.MEM_EXECUTE)
+
+    def test_cave_body_outside_a_mapped_section_is_caught(self):
+        data = make_pe()
+        site = pc.Site("loop3_cave", 0x140001100, 0x500, bytes(8), bytes(8), "t")
+        with self.assertRaises(pc.PatchError):
+            pc.validate_geometry(data, [site])
 
     def test_checksum_is_recomputed(self):
         data = fixture_copy()

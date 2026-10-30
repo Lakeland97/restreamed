@@ -69,14 +69,18 @@ except ImportError:                                     # imported as tools.patc
 # client's .text is VA = file + 0x140000C00, its .rdata VA = file + 0x140000E00,
 # and both are re-derived from the PE header on every run).
 
-# The shipped .rdata tail: VirtualSize 0x00DF5AFC, SizeOfRawData 0x00DF5C00, so
-# 260 zero bytes follow the mapped data. Every cave body below fits in them, and
-# mapping them (VirtualSize -> SizeOfRawData, MEM_EXECUTE) is the only header
-# edit a cave profile needs. RDATA_VIRTUALSIZE_SHIPPED doubles as the build
-# identity check: any other value means this is not the supported client.
-RDATA_VIRTUALSIZE_SHIPPED = 0x00DF5AFC
-RDATA_VIRTUALSIZE = 0x00DF5C00
+# Cave bodies live in the zero tail of a section. Each entry is
+# (shipped VirtualSize, SizeOfRawData): the shipped value doubles as the build
+# identity check, and mapping the tail raises VirtualSize to SizeOfRawData and
+# sets MEM_EXECUTE on that section. .rdata holds the host/identity stubs; .pdata
+# holds the wardrobe stubs (its raw tail is 0x1A4 zero bytes past the last
+# RUNTIME_FUNCTION).
+CAVE_SECTIONS = {
+    ".rdata": (0x00DF5AFC, 0x00DF5C00),
+    ".pdata": (0x0027765C, 0x00277800),
+}
 MEM_EXECUTE = 0x20000000
+RDATA_VIRTUALSIZE_SHIPPED, RDATA_VIRTUALSIZE = CAVE_SECTIONS[".rdata"]
 
 
 class PatchError(Exception):
@@ -239,7 +243,14 @@ SITES = (
     _s("mesh_gate_nop", 0x1405EA37B, 0x005E977B, "0f85a7000000", "909090909090",
        "alternative: drop the post-block early exit (same effect, 6 bytes)"),
 
-    # --- join: loading screen -------------------------------------------------
+    # --- wardrobe: getSingletonCosmetic null-id guard --------------------------
+    _s("cosmetic_nullid_hook", 0x1405FD47E, 0x005FC87E, "4c8d4d584c8d442440",
+       "e905739b0390909090",
+       "skip the preview lookup for an empty cosmetic id, as the sibling apply paths do"),
+    _s("cosmetic_nullid_cave", 0x143FB4788, 0x03E20788, bytes(23),
+       "8338000f846b8d64fc4c8d4d584c8d442440e9e88c64fc",
+       "empty id: take the no-template path; otherwise replay the displaced setup and continue"),
+
     # --- optional sites, not part of a profile -------------------------------
     _s("matchover_m2", 0x140CC01BE, 0x00CBF5BE, "0f84d9050000", "909090909090",
        "drop the MatchOver +0x31 early exit; loop3 keeps it as the clock gate"),
@@ -257,7 +268,7 @@ SITE_ORDER = {site.name: index for index, site in enumerate(SITES)}
 # Stub bodies live in the .rdata tail; a profile that includes one must map that
 # tail executable and must include its hook.
 CAVE_BODIES = ("identity_cave", "loop3_cave", "round_timer_cave",
-               "equip_fatal_cave", "equip_own_cave")
+               "equip_fatal_cave", "equip_own_cave", "cosmetic_nullid_cave")
 CAVE_GROUPS = (
     ("identity cave", ("identity_hook", "identity_cave", "contestants_phase")),
     ("post-match loop cave", ("loop3_hook", "loop3_cave")),
@@ -327,9 +338,10 @@ PROFILES = {
     ),
     "all-cosmetics-equip": Profile(
         "all-cosmetics-equip",
-        "all-cosmetics plus the selection fix: unowned/absent picks report the game's error instead of crashing, and a selected item with no owned variations applies the entity the UI holds",
+        "all-cosmetics plus the wardrobe fixes: the slot pages open (empty ids take the no-template path), unowned/absent picks report the game's error instead of crashing, and a selected item applies the entity the UI holds",
         CLIENT_SITES + ("cosmetic_clear_skip", "no_loading_screen", "cosmetics_all",
-                        "equip_oob_hook", "equip_fatal_cave", "equip_own_hook", "equip_own_cave"),
+                        "equip_oob_hook", "equip_fatal_cave", "equip_own_hook", "equip_own_cave",
+                        "cosmetic_nullid_hook", "cosmetic_nullid_cave"),
         True,
     ),
     "all-cosmetics": Profile(
@@ -424,13 +436,6 @@ def file_to_va(secs, offset):
     return sec.va + (offset - sec.rawptr)
 
 
-def _rdata(secs):
-    for sec in secs:
-        if sec.name == ".rdata":
-            return sec
-    raise PatchError("PE image has no .rdata section")
-
-
 # --- table validation --------------------------------------------------------
 
 def validate_table(sites):
@@ -454,18 +459,49 @@ def validate_table(sites):
     return True
 
 
-def validate_geometry(data, sites):
-    """Check every site against this image: VA matches, caves fit the .rdata tail."""
-    secs = sections(data)
-    rdata = _rdata(secs)
-    has_caves = any(site.name in CAVE_BODIES for site in sites)
-    if has_caves and rdata.vsize not in (RDATA_VIRTUALSIZE_SHIPPED, RDATA_VIRTUALSIZE):
+def _section(secs, name):
+    for sec in secs:
+        if sec.name == name:
+            return sec
+    raise PatchError("PE image has no %s section" % name)
+
+
+def cave_sections(secs, sites):
+    """The sections that hold cave bodies, in a fixed order."""
+    names = {section_for_file_offset(secs, site.offset).name
+             for site in sites if site.name in CAVE_BODIES}
+    unknown = names - set(CAVE_SECTIONS)
+    if unknown:
         raise PatchError(
-            ".rdata VirtualSize is %#x, expected %#x (shipped) or %#x (mapped); "
-            "this is not the supported client build"
-            % (rdata.vsize, RDATA_VIRTUALSIZE_SHIPPED, RDATA_VIRTUALSIZE))
-    cave_low = rdata.rawptr + RDATA_VIRTUALSIZE_SHIPPED
-    cave_high = rdata.rawptr + RDATA_VIRTUALSIZE
+            "cave bodies must live in %s, not %s"
+            % (" or ".join(sorted(CAVE_SECTIONS)), ", ".join(sorted(unknown))))
+    return [_section(secs, name) for name in CAVE_SECTIONS if name in names]
+
+
+def _cave_sites_in(sec, sites):
+    end = sec.rawptr + sec.rawsize
+    return [site for site in sites
+            if site.name in CAVE_BODIES and sec.rawptr <= site.offset < end]
+
+
+def validate_geometry(data, sites):
+    """Check every site against this image: VA matches, caves fit a mapped tail."""
+    secs = sections(data)
+    for sec in cave_sections(secs, sites):
+        shipped, mapped = CAVE_SECTIONS[sec.name]
+        if sec.vsize not in (shipped, mapped):
+            raise PatchError(
+                "%s VirtualSize is %#x, expected %#x (shipped) or %#x (mapped); "
+                "this is not the supported client build"
+                % (sec.name, sec.vsize, shipped, mapped))
+        cave_low = sec.rawptr + shipped
+        cave_high = sec.rawptr + mapped
+        for site in _cave_sites_in(sec, sites):
+            if site.offset < cave_low or site.offset + site.size > cave_high:
+                raise PatchError(
+                    "%s: stub %#x..%#x does not fit the %s padding %#x..%#x"
+                    % (site.name, site.offset, site.offset + site.size,
+                       sec.name, cave_low, cave_high))
     for site in sites:
         if site.offset + site.size > len(data):
             raise PatchError("%s: patch ends past EOF (%#x)"
@@ -474,15 +510,6 @@ def validate_geometry(data, sites):
         if derived != site.va:
             raise PatchError("%s: table says VA %#x but file offset %#x is VA %#x"
                              % (site.name, site.va, site.offset, derived))
-        if site.name in CAVE_BODIES:
-            sec = section_for_file_offset(secs, site.offset)
-            if sec.name != ".rdata":
-                raise PatchError("%s: cave body must live in .rdata" % site.name)
-            if site.offset < cave_low or site.offset + site.size > cave_high:
-                raise PatchError(
-                    "%s: stub %#x..%#x does not fit the .rdata padding %#x..%#x"
-                    % (site.name, site.offset, site.offset + site.size,
-                       cave_low, cave_high))
     return True
 
 
@@ -550,29 +577,34 @@ def apply_patches(data, profile):
     refused patch leaves the caller's buffer exactly as it was.
     """
     check_originals(data, profile)
-    rdata = _rdata(sections(data)) if profile.maps_rdata_exec else None
-    if rdata is not None:
-        needed = max(site.offset + site.size for site in profile.sites
-                     if site.name in CAVE_BODIES) - rdata.rawptr
-        if needed > RDATA_VIRTUALSIZE:
-            raise PatchError("stubs need %#x bytes of .rdata but only %#x are mapped"
-                             % (needed, RDATA_VIRTUALSIZE))
-        if rdata.rawsize < RDATA_VIRTUALSIZE:
-            raise PatchError(".rdata SizeOfRawData %#x cannot hold VirtualSize %#x"
-                             % (rdata.rawsize, RDATA_VIRTUALSIZE))
+    cave_secs = []
+    if profile.maps_rdata_exec:
+        secs = sections(data)
+        cave_secs = cave_sections(secs, profile.sites)
+        for sec in cave_secs:
+            mapped = CAVE_SECTIONS[sec.name][1]
+            needed = max(site.offset + site.size
+                         for site in _cave_sites_in(sec, profile.sites)) - sec.rawptr
+            if needed > mapped:
+                raise PatchError("stubs need %#x bytes of %s but only %#x are mapped"
+                                 % (needed, sec.name, mapped))
+            if sec.rawsize < mapped:
+                raise PatchError("%s SizeOfRawData %#x cannot hold VirtualSize %#x"
+                                 % (sec.name, sec.rawsize, mapped))
     report = []
     for site in profile.sites:
         data[site.offset:site.offset + site.size] = site.patched
         report.append("  " + site.describe())
-    if rdata is not None:
-        if rdata.vsize < RDATA_VIRTUALSIZE:
-            struct.pack_into("<I", data, rdata.header + 8, RDATA_VIRTUALSIZE)
-            report.append("  .rdata VirtualSize %#x -> %#x"
-                          % (rdata.vsize, RDATA_VIRTUALSIZE))
-        chars = _u32(data, rdata.header + 36)
+    for sec in cave_secs:
+        mapped = CAVE_SECTIONS[sec.name][1]
+        if sec.vsize < mapped:
+            struct.pack_into("<I", data, sec.header + 8, mapped)
+            report.append("  %s VirtualSize %#x -> %#x" % (sec.name, sec.vsize, mapped))
+        chars = _u32(data, sec.header + 36)
         if not chars & MEM_EXECUTE:
-            struct.pack_into("<I", data, rdata.header + 36, chars | MEM_EXECUTE)
-            report.append("  .rdata Characteristics %#x -> %#x" % (chars, chars | MEM_EXECUTE))
+            struct.pack_into("<I", data, sec.header + 36, chars | MEM_EXECUTE)
+            report.append("  %s Characteristics %#x -> %#x"
+                          % (sec.name, chars, chars | MEM_EXECUTE))
     checksum_at = checksum_offset(data)
     old_sum = _u32(data, checksum_at)
     new_sum = compute_checksum(data)
@@ -616,14 +648,16 @@ def verify(data, profile):
         detail = "ok" if good else "found %s, expected %s" % (found.hex(), site.patched.hex())
         rows.append((site, good, detail))
     if profile.maps_rdata_exec:
-        rdata = _rdata(sections(data))
-        good = rdata.vsize >= RDATA_VIRTUALSIZE
-        ok = ok and good
-        rows.append((".rdata VirtualSize", good, "%#x" % rdata.vsize))
-        chars = _u32(data, rdata.header + 36)
-        good = bool(chars & MEM_EXECUTE)
-        ok = ok and good
-        rows.append((".rdata Characteristics", good, "%#x" % chars))
+        secs = sections(data)
+        for sec in cave_sections(secs, profile.sites):
+            mapped = CAVE_SECTIONS[sec.name][1]
+            good = sec.vsize >= mapped
+            ok = ok and good
+            rows.append(("%s VirtualSize" % sec.name, good, "%#x" % sec.vsize))
+            chars = _u32(data, sec.header + 36)
+            good = bool(chars & MEM_EXECUTE)
+            ok = ok and good
+            rows.append(("%s Characteristics" % sec.name, good, "%#x" % chars))
     stored = _u32(data, checksum_offset(data))
     computed = compute_checksum(data)
     good = stored == computed
