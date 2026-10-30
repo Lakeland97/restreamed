@@ -365,7 +365,7 @@ PROFILES = {
     ),
     "host-min": Profile(
         "host-min",
-        "host byte patches only: no caves, no .rdata mapping",
+        "host byte patches only: no caves, no section mapping",
         HOST_BYTES,
         False,
     ),
