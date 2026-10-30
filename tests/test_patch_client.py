@@ -247,15 +247,16 @@ class ProfileTest(unittest.TestCase):
         self.assertIn("no_loading_screen", pc.PROFILES["all-cosmetics"].site_names)
         self.assertIn("no_loading_screen", pc.PROFILES["all-cosmetics-equip"].site_names)
 
-    def test_all_cosmetics_equip_adds_the_selection_and_guard_caves(self):
+    def test_all_cosmetics_equip_adds_the_selection_caves(self):
         base = set(pc.PROFILES["all-cosmetics"].site_names)
         equip = set(pc.PROFILES["all-cosmetics-equip"].site_names)
         self.assertEqual(
             equip,
             base | {"equip_oob_hook", "equip_fatal_cave",
-                    "equip_own_hook", "equip_own_cave",
-                    "cosmetic_nullid_hook", "cosmetic_nullid_cave"},
+                    "equip_own_hook", "equip_own_cave"},
         )
+        self.assertIn("cosmetic_nullid_cave", base)
+        self.assertTrue(pc.PROFILES["all-cosmetics"].maps_rdata_exec)
         self.assertTrue(pc.PROFILES["all-cosmetics-equip"].maps_rdata_exec)
 
     def test_equip_stubs_stay_inside_the_shared_hole(self):

@@ -97,21 +97,21 @@ Profiles:
 
   client    passes the launcher check (DRM identity cave), so the stock login
             flow can reach the local server.
+  home-model  client plus the cosmetics fix: the HOME player model is dressed.
   play      home-model plus the loading-screen fix: a native-travel join reaches the
             match instead of staying on the LOADING widget.
-  home-model  client plus the cosmetics fix: the HOME player model is dressed.
-  all-cosmetics  play plus the full cosmetic id set for the wardrobe (the slot pages still need
-            item templates from the server; see the limitation above).
-  all-cosmetics-equip  the above plus two selection caves: an out-of-range or unowned pick reports
-            the game's error instead of crashing, and a listed item applies the entity the UI
-            already holds. The slot pages open; completing a selection still reports the missing
-            singleton entity (see the limitation above).
+  all-cosmetics  play plus the full cosmetic id set and the null-id guard: every
+            slot page opens and lists its items.
+  all-cosmetics-equip  the above plus the selection caves: an out-of-range or unowned
+            pick reports the game's error instead of crashing, and a listed item
+            applies the entity the UI holds. Completing a selection still reports the
+            missing singleton entity (see the limitation above).
   host      the full working host set: identity cave, post-match loop cave, round
             timer cave, the login/admission byte patches and the match-data patches.
   host-min  the same byte patches without any cave: no .rdata mapping, no stubs.
   list      print every site with its virtual address, file offset and purpose.
 
-A two-client test needs the pak URL patch on both copies, `client` on the joining
+A two-client test needs the pak URL patch on both copies, `play` on the joining
 copy and `host` on the hosting copy.
 
 The joining client needs the loading-screen fix (`play`, or `--add no_loading_screen` to another
