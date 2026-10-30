@@ -269,7 +269,14 @@ HOST_BYTES = (
     "send_match_data_post_skip",
 )
 
-CAVE_SITES = tuple(name for group in CAVE_GROUPS for name in group[1])
+HOST_CAVE_GROUPS = ("identity cave", "post-match loop cave", "round timer cave")
+
+CAVE_SITES = tuple(
+    name
+    for label, group in CAVE_GROUPS
+    if label in HOST_CAVE_GROUPS
+    for name in group
+)
 
 
 class Profile(object):

@@ -255,6 +255,13 @@ class ProfileTest(unittest.TestCase):
             sites["equip_own_cave"].va,
         )
 
+    def test_host_does_not_carry_the_wardrobe_caves(self):
+        # The equip pair belongs to the client wardrobe profile; adding a cave
+        # group must not silently widen the host set.
+        for name in ("equip_oob_hook", "equip_fatal_cave",
+                     "equip_own_hook", "equip_own_cave"):
+            self.assertNotIn(name, pc.PROFILES["host"].site_names)
+
     def test_profiles_reference_known_sites_in_table_order(self):
         order = [site.name for site in pc.SITES]
         for profile in pc.PROFILES.values():
