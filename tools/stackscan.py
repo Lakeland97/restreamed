@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
-"""Resolve a captured exception against an in-guest minidump extraction.
+"""Resolve a captured exception against a minidump extraction.
 
-Inputs (produced in-guest by tools/dumpinfo5.ps1, pulled to runtime/):
+Inputs (produced by the lab's minidump extraction step):
   cf9_mods.txt  - "<base hex16> <size hex> <path>" per module
   cf9_exc.txt   - exception record + context + stack window descriptor
   cf9_stack.bin - the live stack window bytes

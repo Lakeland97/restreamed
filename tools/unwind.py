@@ -30,11 +30,10 @@ import os
 import struct
 import sys
 
-EXE_PATH = ('/Users/user/Scripts/git/restreamed-dev/game/hns/Binaries/Win64/'
-            'Streamline.exe')
-DMP_PATH = '/Users/user/Scripts/git/restreamed-dev/runtime/cd-9.dmp'
-OUT_PATH = ('/Users/user/Scripts/git/restreamed-dev/decomp/ghidra_out/'
-            'R785_frames_cd9.txt')
+if len(sys.argv) != 4:
+    sys.stderr.write('usage: unwind.py <Streamline.exe> <dump.dmp> <out.txt>\n')
+    raise SystemExit(2)
+EXE_PATH, DMP_PATH, OUT_PATH = sys.argv[1], sys.argv[2], sys.argv[3]
 
 IMAGE_BASE = 0x140000000      # preferred image base of Streamline.exe
 MAX_FRAMES = 40
@@ -539,7 +538,8 @@ def main():
         out.append('      therefore complete; %s is hidden by the tail call.' % callee)
     text = '\n'.join(out) + '\n'
     sys.stdout.write(text)
-    os.makedirs(os.path.dirname(OUT_PATH), exist_ok=True)
+    if os.path.dirname(OUT_PATH):
+        os.makedirs(os.path.dirname(OUT_PATH), exist_ok=True)
     with open(OUT_PATH, 'w') as f:
         f.write(text)
     sys.stderr.write('wrote %s\n' % OUT_PATH)

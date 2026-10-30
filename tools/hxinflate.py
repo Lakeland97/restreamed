@@ -5,7 +5,7 @@ Spec (authoritative, from the library the client links): proletariatgames/hxinfl
 (haxelib `hxInflate`), `serialization/Deflater.hx` (writer) and `serialization/Inflater.hx`
 (reader). VERSION = 3, VERSION_CODE = "ZVER".
 
-How the appserver reply uses it (see DECOMPILE_NOTES "R-spec" and MODLOG R803):
+How the appserver reply uses it (verified against the client's own inflater):
 
   entityTypeInfo   = the *external type cache* stream: "ZVER3" + purpose + type-info tokens
                      (read by Inflater.inflateTypeInfo -> `new Inflater(stream)`, header REQUIRED)
