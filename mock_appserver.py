@@ -850,14 +850,14 @@ def process_url_join_reply():
     s = haxe_ser.Serializer()
     kind = os.environ.get("GUL_URL_ACTION", "join")
     if kind == "nogame":
-        return ("n" + "w" + s.value("model.Result") + s.value("Success") + ":1"
-                + "w" + s.value("appserver.api.UrlAction") + s.value("UNoGame") + ":0")
+        return haxe_ser.handshake_result_dsur(
+            haxe_ser.HxEnum("appserver.api.UrlAction", 1, []))
     if kind == "error":
         return ("n" + "w" + s.value("model.Result") + s.value("Error") + ":1"
                 + s.value("join-failed"))
     if kind == "denied":
-        return ("n" + "w" + s.value("model.Result") + s.value("Success") + ":1"
-                + "w" + s.value("appserver.api.UrlAction") + s.value("UAccessDenied") + ":0")
+        return haxe_ser.handshake_result_dsur(
+            haxe_ser.HxEnum("appserver.api.UrlAction", 3, []))
     # processUrl is a public-plane op: its Success payload must be a branch-A
     # DataStoreUpdateResponse (the consumer dyncasts to it before reading returnVal). A bare
     # Result.Success(UrlAction) fails that cast with a null dereference and the handler never runs.

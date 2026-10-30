@@ -36,6 +36,21 @@ class ProcessUrlReplyTest(unittest.TestCase):
                 if value is not None:
                     os.environ[key] = value
 
+    def test_other_actions_use_the_dsur_envelope(self):
+        saved = os.environ.get("GUL_URL_ACTION")
+        try:
+            for kind in ("nogame", "denied"):
+                os.environ["GUL_URL_ACTION"] = kind
+                wire = mock_appserver.process_url_join_reply()
+                self.assertTrue(wire.startswith("nw"), kind)
+                self.assertIn("appserver.remoting.DataStoreUpdateResponse", wire, kind)
+                self.assertIn("appserver.api.UrlAction", wire, kind)
+        finally:
+            if saved is None:
+                os.environ.pop("GUL_URL_ACTION", None)
+            else:
+                os.environ["GUL_URL_ACTION"] = saved
+
     def test_overrides(self):
         saved = {k: os.environ.get(k) for k in
                  ("GUL_GAME_HOST", "GUL_GAME_PORT", "GUL_JOIN_SESSION",
