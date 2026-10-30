@@ -53,6 +53,11 @@ Layout
                              client executable. The client's DRM path refuses a modified
                              executable until the checksum matches the file.
 
+  tools/patch_client.py      Patch your own Streamline.exe into the host builds: the
+                             login/admission byte patches, the identity cave, the
+                             post-match loop and the round timer. Verifies every site
+                             before writing and recomputes the checksum.
+
   tools/u16scan.py           UTF-16LE string extractor for binary triage.
   tools/unwind.py            Unwind/exception metadata helpers for the shipped binary.
   tools/stackscan.py         Stack-frame scanning helper.
@@ -71,19 +76,48 @@ Running the mock
 The server listens on the given port and answers the client's remoting calls. Point your
 patched client at the host running it.
 
-Building the client patch
--------------------------
+Patching your client
+--------------------
+
+Patch a copy of your own executable; nothing patched is distributed here.
+
+  python3 tools/patch_client.py --profile host \
+      --in "/path/to/Streamline/hns/Binaries/Win64/Streamline.exe" \
+      --out Streamline.host.exe
+
+  python3 tools/patch_client.py --profile host --verify Streamline.host.exe
+  python3 tools/patch_client.py --profile list
+
+Profiles:
+
+  host      the full working host set: identity cave, post-match loop cave, round
+            timer cave, the login/admission byte patches and the match-data patches.
+  host-min  the same byte patches without any cave: no .rdata mapping, no stubs.
+  list      print every site with its virtual address, file offset and purpose.
+
+`--add NAME` and `--drop NAME` override single sites of a profile.
+
+The patcher holds only the original bytes it checks at each site and the stubs it
+injects, and it refuses to write anything unless every original byte still matches:
+it reports the site that did not, so a different game build fails loudly instead of
+producing a half-patched executable. It also refuses to overwrite its own input.
+
+The caves live in the zero padding at the end of `.rdata`, so the patch raises that
+section's VirtualSize to its SizeOfRawData and sets MEM_EXECUTE. Every profile then
+recomputes the PE optional-header checksum, because the client's DRM path rejects a
+modified executable until the stored checksum matches the file:
+
+  python3 tools/fix_pe_checksum.py Streamline.host.exe        # if you edited bytes yourself
+
+Without a correct checksum the client reports that it must be run through Steam or
+the Twitch launcher.
+
+The pak patch below is the other half: it redirects the client's backend URL.
 
   python3 tools/pak_patch_url.py "/path/to/Streamline/hns/Content/Paks/hns-WindowsNoEditor.pak" \
       'https://api.playstreamline.com' 'http://127.0.0.1:8096/////////'
 
 Then start the game.
-
-If you patch the executable itself rather than the pak, recompute its PE checksum:
-
-  python3 tools/fix_pe_checksum.py "/path/to/Streamline/hns/Binaries/Win64/Streamline.exe"
-
-Without that, the client reports that it must be run through Steam or the Twitch launcher.
 
 The original server domain
 --------------------------
