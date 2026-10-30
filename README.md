@@ -12,7 +12,8 @@ Works:
 
 - Login handshake and session context against the local server, through to the HOME menu.
 - A client-hosted listen server on UDP 7777 that waits for a second player.
-- A second client joining by native travel, with round phases replicated to both peers.
+- A second client joining by native travel, with round phases replicated to both peers. The joining
+  client renders and plays the live match once the overlay arms its map-loaded latch (see below).
 - Player identity and contestant registration in a match.
 - The full round lifecycle on the host, with timed rounds, through MatchOver to the awards UI, then
   back to `WaitingForPlayers` and the next round.
@@ -23,6 +24,9 @@ Works:
 Does not work:
 
 - Joining from a server-sent join URL; the client crashes.
+- Browsing a cosmetic the client holds no entity for. The full-wardrobe list returns every id, but the
+  slot page resolves each id to an item entity and template; absent ones report
+  `getSingleton cannot get a null templateID` in a handled error dialog instead of crashing.
 - The host has no appserver session, so entity lookups miss. The visible effect is cosmetic.
 
 Design notes, byte patches and open problems: [wiki](https://github.com/Lakeland97/restreamed/wiki).
@@ -94,8 +98,9 @@ Profiles:
             flow can reach the local server.
   home-model  client plus the cosmetics fix: the HOME player model is dressed.
   all-cosmetics  home-model plus the full wardrobe list (every cosmetic is shown).
-  all-cosmetics-equip  the above plus wardrobe selection fixes: an out-of-range or unowned pick
-            returns the game's error instead of crashing, and a listed item equips.
+  all-cosmetics-equip  the above plus two selection caves: an out-of-range or unowned pick reports
+            the game's error instead of crashing, and a listed item applies the entity the UI
+            already holds. Cosmetics the client holds no entity for still cannot be browsed.
   host      the full working host set: identity cave, post-match loop cave, round
             timer cave, the login/admission byte patches and the match-data patches.
   host-min  the same byte patches without any cave: no .rdata mapping, no stubs.
@@ -103,6 +108,11 @@ Profiles:
 
 A two-client test needs the pak URL patch on both copies, `client` on the joining
 copy and `host` on the hosting copy.
+
+The joining client also needs the [overlay](tools/overlay/README.md) loaded. A native-travel join never
+sets the client's map-loaded flag, so the game never dismisses its loading screen; the overlay arms that
+flag (`ArmMapLoaded`) eight seconds after the widget appears and the client's own tick closes the screen.
+Calling the close routine directly instead crashes the render thread.
 
 The `host` build also needs the listen map configuration, or it boots as a client:
 

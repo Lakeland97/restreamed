@@ -230,6 +230,31 @@ class ProfileTest(unittest.TestCase):
         self.assertIn("round_timer_cave", pc.PROFILES["host"].site_names)
         self.assertNotIn("round_end_le2", pc.PROFILES["host"].site_names)
 
+    def test_all_cosmetics_equip_adds_the_selection_caves(self):
+        base = set(pc.PROFILES["all-cosmetics"].site_names)
+        equip = set(pc.PROFILES["all-cosmetics-equip"].site_names)
+        self.assertEqual(
+            equip,
+            base | {"equip_oob_hook", "equip_fatal_cave",
+                    "equip_own_hook", "equip_own_cave"},
+        )
+        self.assertTrue(pc.PROFILES["all-cosmetics-equip"].maps_rdata_exec)
+
+    def test_equip_stubs_stay_inside_the_shared_hole(self):
+        # Both faces of the equip pair must fit the one .rdata hole between the
+        # shipped VirtualSize and SizeOfRawData; the profile maps it executable.
+        sites = {site.name: site for site in pc.SITES}
+        low = 0x143AB8B1B
+        high = 0x143AB8B60
+        for name in ("equip_fatal_cave", "equip_own_cave"):
+            site = sites[name]
+            self.assertGreaterEqual(site.va, low)
+            self.assertLessEqual(site.va + len(site.patched), high, name)
+        self.assertLessEqual(
+            sites["equip_fatal_cave"].va + len(sites["equip_fatal_cave"].patched),
+            sites["equip_own_cave"].va,
+        )
+
     def test_profiles_reference_known_sites_in_table_order(self):
         order = [site.name for site in pc.SITES]
         for profile in pc.PROFILES.values():
@@ -297,7 +322,8 @@ class ApplyTest(unittest.TestCase):
         off = fpc.checksum_offset(data)
         self.assertEqual(struct.unpack_from("<I", data, off)[0],
                          fpc.compute_checksum(data))
-        self.assertEqual(struct.unpack_from("<I", data, off)[0], KNOWN_PATCHED_CHECKSUM)
+        # the numeric pin lives in ChecksumTest against a fixed buffer; here the
+        # property is that the stored field matches the computed one
 
     def test_verify_passes_after_apply_and_fails_before(self):
         clean = fixture_copy()

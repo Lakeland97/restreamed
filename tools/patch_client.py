@@ -308,7 +308,7 @@ PROFILES = {
     ),
     "all-cosmetics-equip": Profile(
         "all-cosmetics-equip",
-        "all-cosmetics plus the selection fix: unowned/absent picks return the game's error instead of crashing, and a listed item equips",
+        "all-cosmetics plus the selection fix: unowned/absent picks report the game's error instead of crashing, and a selected item with no owned variations applies the entity the UI holds",
         CLIENT_SITES + ("cosmetic_clear_skip", "cosmetics_all",
                         "equip_oob_hook", "equip_fatal_cave", "equip_own_hook", "equip_own_cave"),
         True,
