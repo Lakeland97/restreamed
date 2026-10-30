@@ -314,9 +314,9 @@ PROFILES = {
     ),
     "play": Profile(
         "play",
-        "client plus the loading-screen fix: a native-travel join reaches the match instead of "
+        "home-model plus the loading-screen fix: a native-travel join reaches the match instead of "
         "staying on the LOADING widget",
-        CLIENT_SITES + ("no_loading_screen",),
+        CLIENT_SITES + ("cosmetic_clear_skip", "no_loading_screen"),
         False,
     ),
     "home-model": Profile(
@@ -328,14 +328,14 @@ PROFILES = {
     "all-cosmetics-equip": Profile(
         "all-cosmetics-equip",
         "all-cosmetics plus the selection fix: unowned/absent picks report the game's error instead of crashing, and a selected item with no owned variations applies the entity the UI holds",
-        CLIENT_SITES + ("cosmetic_clear_skip", "cosmetics_all",
+        CLIENT_SITES + ("cosmetic_clear_skip", "no_loading_screen", "cosmetics_all",
                         "equip_oob_hook", "equip_fatal_cave", "equip_own_hook", "equip_own_cave"),
         True,
     ),
     "all-cosmetics": Profile(
         "all-cosmetics",
-        "home-model plus the full cosmetic id set for the wardrobe (the slot pages still need item templates from the server)",
-        CLIENT_SITES + ("cosmetic_clear_skip", "cosmetics_all"),
+        "play plus the full cosmetic id set for the wardrobe (the slot pages still need item templates from the server)",
+        CLIENT_SITES + ("cosmetic_clear_skip", "no_loading_screen", "cosmetics_all"),
         False,
     ),
     "host": Profile(

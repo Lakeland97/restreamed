@@ -97,11 +97,11 @@ Profiles:
 
   client    passes the launcher check (DRM identity cave), so the stock login
             flow can reach the local server.
-  play      client plus the loading-screen fix: a native-travel join reaches the
+  play      home-model plus the loading-screen fix: a native-travel join reaches the
             match instead of staying on the LOADING widget.
   home-model  client plus the cosmetics fix: the HOME player model is dressed.
-  all-cosmetics  home-model plus the full cosmetic id set for the wardrobe (the slot pages still
-            need item templates from the server; see the limitation above).
+  all-cosmetics  play plus the full cosmetic id set for the wardrobe (the slot pages still need
+            item templates from the server; see the limitation above).
   all-cosmetics-equip  the above plus two selection caves: an out-of-range or unowned pick reports
             the game's error instead of crashing, and a listed item applies the entity the UI
             already holds. This does not open the slot pages, which need item templates from the

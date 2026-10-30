@@ -230,10 +230,19 @@ class ProfileTest(unittest.TestCase):
         self.assertIn("round_timer_cave", pc.PROFILES["host"].site_names)
         self.assertNotIn("round_end_le2", pc.PROFILES["host"].site_names)
 
-    def test_play_is_client_plus_the_loading_screen_fix(self):
+    def test_play_is_home_model_plus_the_loading_screen_fix(self):
         play = set(pc.PROFILES["play"].site_names)
-        self.assertEqual(play, set(pc.CLIENT_SITES) | {"no_loading_screen"})
+        self.assertEqual(
+            play, set(pc.CLIENT_SITES) | {"cosmetic_clear_skip", "no_loading_screen"})
         self.assertFalse(pc.PROFILES["play"].maps_rdata_exec)
+
+    def test_cosmetic_profiles_are_cumulative(self):
+        self.assertLessEqual(set(pc.PROFILES["all-cosmetics"].site_names),
+                             set(pc.PROFILES["all-cosmetics-equip"].site_names))
+        self.assertLessEqual(set(pc.PROFILES["play"].site_names),
+                             set(pc.PROFILES["all-cosmetics"].site_names))
+        self.assertIn("no_loading_screen", pc.PROFILES["all-cosmetics"].site_names)
+        self.assertIn("no_loading_screen", pc.PROFILES["all-cosmetics-equip"].site_names)
 
     def test_all_cosmetics_equip_adds_the_selection_caves(self):
         base = set(pc.PROFILES["all-cosmetics"].site_names)
