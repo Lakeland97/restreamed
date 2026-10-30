@@ -334,7 +334,7 @@ PROFILES = {
     ),
     "all-cosmetics": Profile(
         "all-cosmetics",
-        "home-model plus the full wardrobe: every cosmetic is listed (equipping a non-default id still needs the ownership bypass)",
+        "home-model plus the full cosmetic id set for the wardrobe (the slot pages still need item templates from the server)",
         CLIENT_SITES + ("cosmetic_clear_skip", "cosmetics_all"),
         False,
     ),
