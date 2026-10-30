@@ -20,10 +20,10 @@ What the patch set does (see the wiki for the analysis behind each site):
     m_timeLimitReached latch had no reader. The cave keeps the latch and then
     calls gotoPhase("RoundEnding").
 
-The three caves live in the 260 zero bytes that .rdata already has past its
-VirtualSize. The patch set therefore also raises .rdata VirtualSize to the
-section's SizeOfRawData and sets MEM_EXECUTE so the caves are mapped and
-executable.
+Caves live in the zero bytes each section already has past its VirtualSize
+(.rdata for the identity/loop/timer/wardrobe stubs, .pdata for the newer
+wardrobe stubs). The patch set therefore raises each used section's VirtualSize
+to its SizeOfRawData and sets MEM_EXECUTE so the stubs are mapped and executable.
 
 Every patch changes the executable, so the PE optional-header checksum is
 recomputed after patching (tools/fix_pe_checksum.py) to keep the binary
@@ -32,10 +32,15 @@ the shipped binary's own stored checksum is already stale.
 
 Profiles
 --------
+  client    the DRM identity cave, so a copy that logs in passes the launcher check.
+  home-model  client plus the cosmetics fix: the HOME player model is dressed.
+  play      home-model plus the loading-screen fix, so a native-travel join renders.
+  all-cosmetics  play plus the full cosmetic id set and the null-id guard.
+  all-cosmetics-equip  all-cosmetics plus the wardrobe selection caves.
   host      the full working host set: identity cave (hook + stub + phase),
             post-match loop cave, round timer cave, the host byte patches and the
             match-data patches. This reproduces the build the project tested.
-  host-min  the same byte patches without any cave: no .rdata mapping, no stubs.
+  host-min  the same byte patches without any cave: no section mapping, no stubs.
             Useful for isolating the caves from the byte-level edits.
   list      print the patch table (site, VA, file offset, purpose) and exit.
 
@@ -689,9 +694,11 @@ def _print_table():
         print("%-9s %d sites: %s" % (name, len(prof.sites), ", ".join(prof.site_names)))
         print("          %s" % prof.description)
     print("")
-    print("A profile with a cave body also maps the .rdata tail (VirtualSize %#x plus"
-          % RDATA_VIRTUALSIZE)
-    print("MEM_EXECUTE). Every patch recomputes the PE checksum.")
+    print("A profile with a cave body also maps that section's tail executable "
+          "(VirtualSize -> SizeOfRawData plus MEM_EXECUTE):")
+    for name, (_shipped, mapped) in CAVE_SECTIONS.items():
+        print("  %-7s VirtualSize %#x" % (name, mapped))
+    print("Every patch recomputes the PE checksum.")
 
 
 def main(argv=None):
@@ -700,7 +707,7 @@ def main(argv=None):
         description="Patch your own Streamline.exe into the host builds.",
     )
     parser.add_argument("--profile", required=True,
-                        help="host, host-min, or list")
+                        help="one of: %s, or list" % ", ".join(PROFILES))
     parser.add_argument("--in", dest="src", metavar="EXE",
                         help="your unpatched Streamline.exe")
     parser.add_argument("--out", dest="dst", metavar="EXE",
@@ -717,7 +724,8 @@ def main(argv=None):
         _print_table()
         return 0
     if args.profile not in PROFILES:
-        parser.error("unknown profile %r (host, host-min, list)" % args.profile)
+        parser.error("unknown profile %r (one of: %s, or list)"
+                     % (args.profile, ", ".join(PROFILES)))
 
     try:
         profile = compose(args.profile, add=args.add, drop=args.drop)
