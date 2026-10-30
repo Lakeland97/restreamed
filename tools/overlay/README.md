@@ -3,10 +3,10 @@
 Optional native overlay for the client: a community-server browser and a host panel,
 drawn with ImGui over the game's own screen.
 
-It is optional for hosting and for HOME, and required for a joining client: a native-travel join
-never sets the client's map-loaded flag, so the game's loading screen is never dismissed. The module
-arms that flag eight seconds after the widget appears (`ArmMapLoaded`) and the game's own tick then
-closes the screen. Calling the close routine directly crashes the render thread.
+It is optional. A client built with the `play` profile (or `--add no_loading_screen`) leaves the
+loading screen on its own. For an unpatched client the module arms the game's map-loaded flag eight
+seconds after the widget appears (`ArmMapLoaded`), and the game's own tick then closes the screen.
+Calling the close routine directly crashes the render thread.
 
 The module hooks two menu handlers so they open a panel instead of running the game's
 chain:

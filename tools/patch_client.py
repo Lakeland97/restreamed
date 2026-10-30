@@ -216,6 +216,11 @@ SITES = (
     _s("cosmetics_all", 0x140A84A47, 0x00A83E47, "e8e46f0300", "e8d4feffff",
        "list every cosmetic in the wardrobe instead of only inventory-owned ones (all 240)"),
 
+    # --- join: loading screen ---------------------------------------------------
+    _s("no_loading_screen", 0x1407DA780, 0x007D9B80, "40", "c3",
+       "return from openLocalLoadingScreen: a native-travel join never arms the map-loaded latch, "
+       "so the widget it creates would never be dismissed"),
+
     # --- wardrobe: selection safety and chosen-item equip ----------------------
     _s("equip_oob_hook", 0x1405F7C1A, 0x005F701A, "488bc3eb0b", "e9fc0e4c03",
        "hook the item fetch so an out-of-range clothing index cannot null-deref"),
@@ -305,6 +310,13 @@ PROFILES = {
         "client",
         "DRM identity cave only: lets the stock login flow pass the launcher check",
         CLIENT_SITES,
+        False,
+    ),
+    "play": Profile(
+        "play",
+        "client plus the loading-screen fix: a native-travel join reaches the match instead of "
+        "staying on the LOADING widget",
+        CLIENT_SITES + ("no_loading_screen",),
         False,
     ),
     "home-model": Profile(

@@ -12,8 +12,8 @@ Works:
 
 - Login handshake and session context against the local server, through to the HOME menu.
 - A client-hosted listen server on UDP 7777 that waits for a second player.
-- A second client joining by native travel, with round phases replicated to both peers. The joining
-  client renders and plays the live match once the overlay arms its map-loaded latch (see below).
+- A second client joining by native travel, with round phases replicated to both peers, rendering and
+  playing the live match (the `play` profile removes the loading screen a native-travel join leaves up).
 - Player identity and contestant registration in a match.
 - The full round lifecycle on the host, with timed rounds, through MatchOver to the awards UI, then
   back to `WaitingForPlayers` and the next round.
@@ -97,6 +97,8 @@ Profiles:
 
   client    passes the launcher check (DRM identity cave), so the stock login
             flow can reach the local server.
+  play      client plus the loading-screen fix: a native-travel join reaches the
+            match instead of staying on the LOADING widget.
   home-model  client plus the cosmetics fix: the HOME player model is dressed.
   all-cosmetics  home-model plus the full wardrobe list (every cosmetic is shown).
   all-cosmetics-equip  the above plus two selection caves: an out-of-range or unowned pick reports
@@ -111,10 +113,12 @@ Profiles:
 A two-client test needs the pak URL patch on both copies, `client` on the joining
 copy and `host` on the hosting copy.
 
-The joining client also needs the [overlay](tools/overlay/README.md) loaded. A native-travel join never
-sets the client's map-loaded flag, so the game never dismisses its loading screen; the overlay arms that
-flag (`ArmMapLoaded`) eight seconds after the widget appears and the client's own tick closes the screen.
-Calling the close routine directly instead crashes the render thread.
+The joining client needs the loading-screen fix (`play`, or `--add no_loading_screen` to another
+profile). A native-travel join never sets the client's map-loaded flag, so the game never dismisses the
+widget it creates; the fix returns from `openLocalLoadingScreen` instead, and the client renders the
+match directly. An unpatched client can use the [overlay](tools/overlay/README.md) instead: it arms the
+latch (`ArmMapLoaded`) eight seconds after the widget appears and the client's own tick closes the
+screen. Calling the close routine directly crashes the render thread.
 
 The `host` build also needs the listen map configuration, or it boots as a client:
 
