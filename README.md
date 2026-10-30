@@ -45,6 +45,10 @@ Layout
 
   tools/pakdump.py           UE4 v3 pak reader: index listing and extraction.
 
+  tools/registry_server.py   Minimal community-server registry: serves the list
+                             the overlay reads, accepts heartbeats, and can
+                             TCP-probe entries so dead servers drop out.
+
   tools/fix_pe_checksum.py   Recompute the PE optional-header checksum after patching the
                              client executable. The client's DRM path refuses a modified
                              executable until the checksum matches the file.
