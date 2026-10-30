@@ -16,11 +16,12 @@
 extern IMGUI_IMPL_API LRESULT ImGui_ImplWin32_WndProcHandler(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
 namespace {
-struct ServerEntry { char name[64]; char addr[96]; };
+struct ServerEntry { char name[64]; char addr[96]; int players; int max; };
 ServerEntry g_servers[32];
 int g_server_count = 0;
 int g_click_count = 0;
 int g_panel = 0;   // 0 = servers, 1 = find, 2 = host
+void* g_menu_self = nullptr;
 DWORD g_last_fetch = 0;
 
 bool FetchRegistry(const char* host, int port, const char* path) {
@@ -57,7 +58,18 @@ bool FetchRegistry(const char* host, int port, const char* path) {
             if (*bar == '|' && bar != line) {
                 *bar = 0;
                 strncpy(g_servers[n].name, line, sizeof(g_servers[n].name) - 1);
-                strncpy(g_servers[n].addr, bar + 1, sizeof(g_servers[n].addr) - 1);
+                char* addr = bar + 1;
+                char* p2 = addr;
+                while (*p2 && *p2 != '|') ++p2;
+                if (*p2 == '|') {
+                    *p2 = 0;
+                    char* pl = p2 + 1;
+                    char* p3 = pl;
+                    while (*p3 && *p3 != '|') ++p3;
+                    if (*p3 == '|') { *p3 = 0; g_servers[n].max = atoi(p3 + 1); }
+                    g_servers[n].players = atoi(pl);
+                }
+                strncpy(g_servers[n].addr, addr, sizeof(g_servers[n].addr) - 1);
                 ++n;
             }
             if (!saved) break;
@@ -182,7 +194,8 @@ extern "C" uintptr_t HookFind(void*) {
     return 0;
 }
 
-extern "C" uintptr_t HookHost(void*) {
+extern "C" uintptr_t HookHost(void* self) {
+    g_menu_self = self;
     g_panel = 2;
     g_visible = true;
     return 0;
@@ -237,7 +250,12 @@ void Render() {
         }
         for (int i = 0; i < g_server_count; ++i) {
             char label[220];
-            sprintf(label, "%s   %s", g_servers[i].name, g_servers[i].addr);
+            if (g_servers[i].max > 0) {
+                sprintf(label, "%s   %d/%d   %s", g_servers[i].name, g_servers[i].players,
+                        g_servers[i].max, g_servers[i].addr);
+            } else {
+                sprintf(label, "%s   %s", g_servers[i].name, g_servers[i].addr);
+            }
             if (ImGui::Button(label, ImVec2(-1, 0))) {
                 ++g_click_count;
                 wchar_t waddr[256] = {};
@@ -359,6 +377,48 @@ void operator delete[](void* p, size_t) noexcept { free(p); }
 
 // Same chain the Frida travel probe uses: game global -> network manager ->
 // local player controller, then FUN_14148FA60(pc, FString, 0, false, FGuid).
+
+// Host: mirror the handler's own sequence -- GetWorld(menuObject, &out), take
+// [out+8] as UWorld*, then FUN_1403a3050(world, hxString, 0, 0). The hxString
+// argument is a Haxe string handle: an even pointer whose +0x18 is an FString.
+extern "C" __declspec(dllexport) int ovl_host() {
+    HMODULE base = GetModuleHandleW(nullptr);
+    auto at = [base](uintptr_t off) { return reinterpret_cast<uintptr_t>(base) + off; };
+    auto get_world = reinterpret_cast<void (*)(void*, void*)>(at(0x872890));
+    unsigned char out[16] = {};
+    void* world = nullptr;
+    if (g_menu_self) {
+        get_world(g_menu_self, out);
+        void* wrapper = *reinterpret_cast<void**>(out);
+        if (wrapper) world = *reinterpret_cast<void**>(reinterpret_cast<char*>(wrapper) + 8);
+    }
+    if (!world) {
+        void* g = *reinterpret_cast<void**>(at(0x3C2BAA0));
+        void* arr = g ? *reinterpret_cast<void**>(reinterpret_cast<uintptr_t>(g) + 0xB30) : nullptr;
+        void* ctx = arr ? *reinterpret_cast<void**>(arr) : nullptr;
+        void* nw = ctx ? *reinterpret_cast<void**>(reinterpret_cast<uintptr_t>(ctx) + 0x230) : nullptr;
+        if (nw) {
+            auto get_pc = reinterpret_cast<void* (*)(void*, int)>(at(0x16FA590));
+            void* pc = get_pc(nw, 0);
+            if (pc) {
+                get_world(pc, out);
+                void* wrapper = *reinterpret_cast<void**>(out);
+                if (wrapper) world = *reinterpret_cast<void**>(reinterpret_cast<char*>(wrapper) + 8);
+            }
+        }
+    }
+    if (!world) return 0;
+
+    wchar_t url[] = L"/Game/Maps/GameCon/GameCon_PersistentLevel?listen?game=Tag?IsHost=true&PlayerSessionID=host-1";
+    struct HxStr { unsigned char pad[0x18]; wchar_t* data; int num; int max; };
+    HxStr hs{};
+    hs.data = url;
+    hs.num = static_cast<int>(wcslen(url) + 1);
+    hs.max = hs.num;
+    auto travel = reinterpret_cast<void (*)(void*, uintptr_t, bool, bool)>(at(0x3A3050));
+    travel(world, reinterpret_cast<uintptr_t>(&hs), true, false);
+    return 1;
+}
 
 extern "C" __declspec(dllexport) int ovl_clicks() { return g_click_count; }
 extern "C" __declspec(dllexport) void ovl_open(int which) { g_panel = which; g_visible = true; }
