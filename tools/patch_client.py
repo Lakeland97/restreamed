@@ -216,6 +216,18 @@ SITES = (
     _s("cosmetics_all", 0x140A84A47, 0x00A83E47, "e8e46f0300", "e8d4feffff",
        "list every cosmetic in the wardrobe instead of only inventory-owned ones (all 240)"),
 
+    # --- wardrobe: selection safety and chosen-item equip ----------------------
+    _s("equip_oob_hook", 0x1405F7C1A, 0x005F701A, "488bc3eb0b", "e9fc0e4c03",
+       "hook the item fetch so an out-of-range clothing index cannot null-deref"),
+    _s("equip_fatal_cave", 0x143AB8B1B, 0x03AB7D1B, bytes(25),
+       "488b05becc1000488b8d08010000488901488bc1e9b5ffb3fc",
+       "return the game's own 'nothing changed' Result instead of faulting"),
+    _s("equip_own_hook", 0x1405F7CE9, 0x005F70E9, "41837c240800", "e9460e4c0390",
+       "hook the owned-variations test so a selected item with none still equips"),
+    _s("equip_own_cave", 0x143AB8B34, 0x03AB7D34, bytes(42),
+       "41837c2408000f8540f2b3fc498b45488b8d10010000488b4010488b0cc8488b4908488bf1e9e0f7b3fc",
+       "apply the entity the UI already holds for the selected item"),
+
     # --- HOME model -----------------------------------------------------------
     _s("mesh_gate_force", 0x1405EA31C, 0x005E971C, "7463", "eb63",
        "always enter the cosmetics mesh/AnimGraph block, even when the gender is unchanged"),
@@ -238,11 +250,14 @@ SITE_ORDER = {site.name: index for index, site in enumerate(SITES)}
 
 # Stub bodies live in the .rdata tail; a profile that includes one must map that
 # tail executable and must include its hook.
-CAVE_BODIES = ("identity_cave", "loop3_cave", "round_timer_cave")
+CAVE_BODIES = ("identity_cave", "loop3_cave", "round_timer_cave",
+               "equip_fatal_cave", "equip_own_cave")
 CAVE_GROUPS = (
     ("identity cave", ("identity_hook", "identity_cave", "contestants_phase")),
     ("post-match loop cave", ("loop3_hook", "loop3_cave")),
     ("round timer cave", ("round_timer_hook", "round_timer_cave")),
+    ("equip safety cave", ("equip_oob_hook", "equip_fatal_cave")),
+    ("equip chosen cave", ("equip_own_hook", "equip_own_cave")),
 )
 
 HOST_BYTES = (
@@ -289,6 +304,13 @@ PROFILES = {
         "client DRM cave plus the cosmetics fix: the HOME player model is dressed with the default set",
         CLIENT_SITES + ("cosmetic_clear_skip",),
         False,
+    ),
+    "all-cosmetics-equip": Profile(
+        "all-cosmetics-equip",
+        "all-cosmetics plus the selection fix: unowned/absent picks return the game's error instead of crashing, and a listed item equips",
+        CLIENT_SITES + ("cosmetic_clear_skip", "cosmetics_all",
+                        "equip_oob_hook", "equip_fatal_cave", "equip_own_hook", "equip_own_cave"),
+        True,
     ),
     "all-cosmetics": Profile(
         "all-cosmetics",

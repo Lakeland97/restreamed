@@ -93,8 +93,9 @@ Profiles:
   client    passes the launcher check (DRM identity cave), so the stock login
             flow can reach the local server.
   home-model  client plus the cosmetics fix: the HOME player model is dressed.
-  all-cosmetics  home-model plus the full wardrobe list (every cosmetic is shown; equipping a
-            non-default item still needs the ownership bypass).
+  all-cosmetics  home-model plus the full wardrobe list (every cosmetic is shown).
+  all-cosmetics-equip  the above plus wardrobe selection fixes: an out-of-range or unowned pick
+            returns the game's error instead of crashing, and a listed item equips.
   host      the full working host set: identity cave, post-match loop cave, round
             timer cave, the login/admission byte patches and the match-data patches.
   host-min  the same byte patches without any cave: no .rdata mapping, no stubs.
