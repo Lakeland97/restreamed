@@ -388,6 +388,26 @@ class ApplyTest(unittest.TestCase):
         self.assertTrue(ok, [(n.name if not isinstance(n, str) else n, d)
                              for n, good, d in rows if not good])
 
+    def test_verify_names_a_non_executable_cave_section(self):
+        data = fixture_copy()
+        pc.apply_patches(data, pc.PROFILES["all-cosmetics-equip"])
+        secs = {sec.name: sec for sec in pc.sections(data)}
+        struct.pack_into("<I", data, secs[".pdata"].header + 36, 0x40000040)
+        ok, rows = pc.verify(data, pc.PROFILES["all-cosmetics-equip"])
+        self.assertFalse(ok)
+        names = [name if isinstance(name, str) else name.name for name, _g, _d in rows]
+        self.assertIn(".pdata Characteristics", names)
+
+    def test_verify_names_the_damaged_cave_body(self):
+        data = fixture_copy()
+        pc.apply_patches(data, pc.PROFILES["all-cosmetics-equip"])
+        site = pc.SITE_BY_NAME["cosmetic_nullid_cave"]
+        data[site.offset] ^= 0xFF
+        ok, rows = pc.verify(data, pc.PROFILES["all-cosmetics-equip"])
+        self.assertFalse(ok)
+        bad = [name for name, good, _d in rows if not good]
+        self.assertIn(site, bad)
+
     def test_verify_names_the_damaged_site(self):
         data = fixture_copy()
         pc.apply_patches(data, pc.PROFILES["host"])
