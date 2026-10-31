@@ -42,6 +42,32 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # Round 6/R789: any 3-segment JWT with payload {"user":...} passes checkPGSAuthToken (no signature
 # check). Keep base64 padding — the client's segment decoder is stricter than a lenient one.
+# Working login configuration baked in as defaults. These select the datastore reply the client
+# needs to finish login and seed its session; without them /startSession returns a 726-byte reply
+# with no entity or template and the client cannot proceed. Set any of them in the environment to
+# A/B-test an alternative (see README, "Running the mock").
+_WORKING_DEFAULTS = {
+    "GUL_BIND": "0.0.0.0",
+    "GUL_DSUR_B_OPS": "startSession",
+    "GUL_DSUR_HX": "1",
+    "GUL_DSUR_HX_PURPOSE": "game",
+    "GUL_DSUR_HX_TEMPLATE": "1",
+    "GUL_DSUR_HX_TAIL": "0",
+    "GUL_HS_MODE": "resultdsur",
+    "GUL_CTX_PROVIDER_ENUM": "1",
+    "GUL_CTX_PROVIDER_IDX": "2",
+    "GUL_USER_POLL_DELAY": "10",
+    "GUL_TRACK_DELAY": "0",
+    "GUL_M_DRM": "3",
+    "GUL_IID_TEMPLATE": "player",
+    "GUL_IID_TEMPLATE_BLOB": "player",
+    "GUL_URL_ACTION": "join",
+    "GUL_TRACK_STYLE": "result",
+    "GUL_NOCL": "0",
+}
+for _name, _value in _WORKING_DEFAULTS.items():
+    os.environ.setdefault(_name, _value)
+
 _DEV_JWT = "x." + base64.urlsafe_b64encode(b'{"user":"devuser"}').decode() + ".z"
 
 SESSION_CTX = {

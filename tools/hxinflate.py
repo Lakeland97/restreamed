@@ -302,6 +302,18 @@ class Reader:
         self.etypes.append(info)
         return info
 
+    def enum_value_tagged(self):
+        """`j` form: enum name, constructor index, argument count, then the arguments."""
+        name = self.value()
+        assert self.s[self.i] == ":", "Invalid enum value"
+        self.i += 1
+        index = self._digits()
+        assert self.s[self.i] == ":", "Invalid enum value"
+        self.i += 1
+        count = self._digits()
+        args = [self.value() for _ in range(count)]
+        return {"enum": name, "index": index, "args": args}
+
     def enum_value(self):
         c = self.s[self.i]
         if c == "|":
@@ -420,8 +432,7 @@ class Reader:
             self.i += 1
             return {"custom": name, "body": body}
         if c == "j":
-            self.i -= 1
-            return self.old_enum_value(True)
+            return self.enum_value_tagged()
         if c == "a":
             out = []
             while self.s[self.i] != "h":

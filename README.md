@@ -5,6 +5,40 @@ Community server and tooling for Streamline (Proletariat, 2016), a 16-player are
 whose official servers shut down in April 2018. This project implements the backend the
 client expects and documents the client patches needed to run it locally.
 
+Try it: two clients, one match
+------------------------------
+
+What this buys you: a host, a joiner, and a live match, on your own machine or your LAN.
+
+1. **Get your own copy of the game.** You need your own legally obtained copy; nothing in this
+   repository ships game code or assets.
+2. **Redirect the pak, once per copy.** The client's backend URL lives in the pak:
+   `python3 tools/pak_patch_url.py "<copy>/hns/Content/Paks/hns-WindowsNoEditor.pak" \
+   'https://api.playstreamline.com' 'http://127.0.0.1:8096/////////'`
+3. **Patch copy A as the host:**
+   `python3 tools/patch_client.py --profile host --in "<A>/hns/Binaries/Win64/Streamline.exe" --out Streamline.host.exe`
+   then put `Streamline.host.exe` back as `Streamline.exe` and add the listen map to
+   `hns/Saved/Config/WindowsNoEditor/Engine.ini`:
+
+       [/Script/EngineSettings.GameMapsSettings]
+       GameDefaultMap=/Game/Maps/GameCon/GameCon_PersistentLevel
+       LocalMapOptions=?game=Tag?listen?IsHost=true?PlayerSessionID=host-1
+
+4. **Patch copy B as the joiner:** `--profile play`.
+5. **Start the mock** where both copies can reach it:
+   `python3 mock_appserver.py 8096`
+   The defaults are the working configuration. Set `GUL_BASE` to the address the clients use
+   (for example `http://192.168.1.20:8096`); `127.0.0.1` is the default.
+6. **Start A.** It boots as a listen server on UDP 7777 and waits for a second player.
+7. **Start B.** It logs in through the mock; the mock's `processUrl` reply carries the join link,
+   and B travels into A's match.
+8. **Expect:** B logs `Welcomed by server (Level: /Game/Maps/GameCon…)`, A logs
+   `Join succeeded`, and both render the round intro, HUD and timer.
+
+If a copy is launched directly rather than through Steam, add the `client` profile to it (or use
+`--profile play`, which includes it). Steam supplies the launcher identity itself; a direct launch
+needs the cave that answers the same request.
+
 Status
 ------
 
@@ -22,6 +56,8 @@ Status
   joins the returned listen host (`Welcomed`; the host logs `Join succeeded`).
 - Practice, challenge and tutorial modes load and run locally. The tutorial is one-shot until
   its played flag is reset.
+- The community registry: `tools/registry_server.py` serves the server list the overlay reads, accepts
+  heartbeats, and TCP-probes entries so dead servers drop out.
 - The local backend and patcher: `mock_appserver.py` speaks the client's haxe.remoting dialect and
   returns the datastore payloads that finish login and seed a session; the patcher verifies every byte
   it replaces and repairs the PE checksum; an offline suite covers the serializer, entity payloads,
@@ -29,161 +65,39 @@ Status
 
 ### What does not work
 
-- The stream layer. Streamline's original design paired the client with a web front end and a live
-  service that ran chat polls, rule votes, bets, flash sales and gameplay mods. None of that is
-  restored: there is no Twitch login, no stream page, and no poll feed, so the mod system the client
-  still contains never starts. See "Where this is going" below.
+- The stream layer — no chat polls, rule votes, bets or gameplay mods. See the
+  [roadmap](https://github.com/Lakeland97/restreamed/wiki/Roadmap).
 - A silent wardrobe selection for every item. With `all-cosmetics-equip` the slot pages open, a pick
-  applies the item and it persists (it follows to HOME and other pages). An item the player owns
-  applies with no dialog. An item outside the player's starting set applies but the post-apply refresh
-  reports `Entity <item> does not exist in collection` in a handled dialog — the inventory holds the
-  48 starting items and the catalogue is larger than that. The client stays up; the cosmetic is kept.
-- The host has no appserver session, so entity lookups miss. The visible effect is cosmetic.
+  applies the item and it persists. An item the player owns applies with no dialog. An item outside the
+  player's starting set applies but the post-apply refresh reports
+  `Entity <item> does not exist in collection` in a handled dialog: the inventory holds the 48 starting
+  items and the catalogue is larger. The client stays up and keeps the cosmetic.
+- The host has no appserver session, so entity lookups miss. The effect is limited to the UI.
 
 Design notes, byte patches and open problems: [wiki](https://github.com/Lakeland97/restreamed/wiki).
-
-### Liberties taken
-
-- **The host is a player.** A stock launch never reaches the client's dedicated-server role, so "server"
-  here means a patched client hosting a listen match. Making a host that is not a player is a goal
-  below, not a shipped feature.
-- **The backend is reconstructed, not recovered.** Request and reply shapes are derived from how the
-  client parses them, not from any original server source. Where the client tolerated a plausible
-  payload we used it.
-- **Identity is faked at the launcher boundary.** A small code cave returns a fixed DRM identity
-  instead of passing Steam or Twitch authentication.
-- **The join loading screen is bypassed, not satisfied.** A native-travel join never arms the client's
-  map-loaded latch, so the `play` profile returns early from `openLocalLoadingScreen`; the overlay does
-  the same from outside the process.
-- **The cosmetic catalogue is widened.** The client is patched to list the whole catalogue instead of
-  the owned set, and a template singleton takes its template id as its instance id so an owned pick
-  resolves. Items outside the 48 starting items still have no container entry; they equip and persist,
-  but the client reports the missing entry.
-- **Onboarding is a setting, not a feature.** Marking the tutorial played is a launch-time settings
-  value; nothing on the server models it.
-
-### Where this is going
-
-#### An orchestrated stream layer
-
-Streamline was built as two halves: the arena client, and a live layer that watched a Twitch channel
-and turned audience actions into gameplay. The client still carries that half — `sl.game.pgs.PGSManager`,
-`ModVotingManager`, `BettingManager`, `FlashSaleManager`, `BingoManager`, `WagerGame`, the mod
-components (`ModComponent`, `ModGroupComponent`, `PropertyModManager`), `StreamoteUtils`, and the
-endpoint paths `/poll`, `/vote/`, `/chat/say`, `/broadcast` alongside Twitch IRC and the Twitch API.
-None of it is connected today, which is why the "Stream" in Streamline is missing.
-
-The goal is not to bring Twitch back. It is to drive the same machinery locally and deliberately:
-
-- **In-game voting.** Players vote on the next rule, physics change or mini-game between rounds,
-  using the client's own voting and mod pipeline.
-- **A simulated audience.** An algorithm stands in for the stream: it proposes mods, votes with a
-  believable spread, and keeps the cadence of a live channel so a solo player or a small group still
-  gets the original rhythm.
-- **Real consequences.** Whatever wins is applied through the existing mod system, so physics, rules
-  and mini-games actually change.
-
-That work is research plus a new server-side feature; it is not implemented yet.
-
-#### A host that is not a player
-
-Today the host is always a player: the match lives inside somebody's client. For a long-lived server
-that is the wrong shape — it ties the world to one person's session and closes when they quit. The
-long-term goal is a host that runs on its own.
-
-The client is not stripped of the idea. It contains a dedicated-server path of its own:
-`sl.appserver.game.DedicatedServerManager` with `getOurURL`, `getIP`, `getEc2Metadata`,
-`sendHostedGameHeartbeat` and `startCheckingOpenParty`, the `NM_DedicatedServer` net mode, and a
-`requires DedicatedServer NetMode` guard on the host admission path. What it does not have is a proven
-way in from a normal launch.
-
-So the plan has two rungs, in order:
-
-1. **Make the shipped build run as a server.** Find whether the engine can be put into dedicated mode
-   from this executable (a launch switch, a config value, or a small patch at the net-mode decision),
-   and what the appserver must answer for that role: a hosted-game heartbeat, an open-party check, the
-   server URL. The local mock can supply those.
-2. **If that road is genuinely closed, build a skeleton host.** Reduce the executable to the parts a
-   server needs — world, game mode, replication, no rendering or local player — and run that. The
-   match rules live in the game mode, so a skeleton still needs the game's own code, but not its
-   front end.
-
-Either rung needs the same thing from the backend, which is why the mock comes first.
-
-Layout
-------
-
-  mock_appserver.py          Reference implementation of the client wire protocol.
-                             Speaks the game's haxe.remoting dialect and logs every
-                             exchange. This is the seed of the real server.
-
-  tools/haxe_ser.py          Serializer/deserializer for the game's Haxe wire format,
-                             including the datastore update response and entity streams.
-
-  tools/hxinflate.py         Parser for entity type-info streams and inflated entities.
-
-  tools/pak_patch_url.py     Same-length in-place pak patcher. Redirects the game's
-                             backend URL in your own copy, with entry-hash refresh and
-                             footer re-signing. Fully reversible.
-
-  tools/pakdump.py           UE4 v3 pak reader: index listing and extraction.
-
-  tools/registry_server.py   Minimal community-server registry: serves the list
-                             the overlay reads, accepts heartbeats, and can
-                             TCP-probe entries so dead servers drop out.
-
-  tools/fix_pe_checksum.py   Recompute the PE optional-header checksum after patching the
-                             client executable so the binary stays self-consistent. Not a
-                             DRM gate: the identity check is launcher-based, and the shipped
-                             binary's own stored checksum is already stale.
-
-  tools/patch_client.py      Patch your own Streamline.exe into the host builds: the
-                             login/admission byte patches, the identity cave, the
-                             post-match loop and the round timer. Verifies every site
-                             before writing and recomputes the checksum.
-
-  tools/u16scan.py           UTF-16LE string extractor for binary triage.
-  tools/unwind.py            Unwind/exception metadata helpers for the shipped binary.
-  tools/stackscan.py         Stack-frame scanning helper.
-  tools/throwscan.py         Exception/throw-site scanning helper.
-  tools/memdump.py           Read-only process memory dump helper.
-  tools/mdread.py            Minidump reader.
-
-  tests/                     Offline contract tests for the serializer, entity payloads,
-                             and mock replies. No game launch required.
 
 Running the mock
 ----------------
 
-The login flow was verified with the branch-B datastore reply enabled. Without these
-variables the `startSession` reply carries no entity or template (726 bytes instead of
-1053) and the client cannot seed its datastore:
+```
+python3 mock_appserver.py 8096
+```
 
-  export GUL_BIND=0.0.0.0
-  export GUL_BASE=http://127.0.0.1:8096
-  export GUL_DSUR_B_OPS=startSession
-  export GUL_DSUR_HX=1
-  export GUL_DSUR_HX_PURPOSE=game
-  export GUL_DSUR_HX_TEMPLATE=1
-  export GUL_DSUR_HX_TAIL=0
-  export GUL_HS_MODE=resultdsur
-  export GUL_CTX_PROVIDER_ENUM=1
-  export GUL_CTX_PROVIDER_IDX=2
-  export GUL_USER_POLL_DELAY=10
-  export GUL_TRACK_DELAY=0
-  export GUL_M_DRM=3
-  export GUL_IID_TEMPLATE=player
-  export GUL_IID_TEMPLATE_BLOB=player
-  export GUL_URL_ACTION=join
-  export GUL_TRACK_STYLE=result
-  export GUL_NOCL=0
-  python3 mock_appserver.py 8096
+No environment is required: the working login configuration (datastore reply, entity template,
+session context) is the default. The knobs below exist for A/B-testing an alternative reply.
 
-On Windows, set the same names with `set GUL_...=...` (or in the system environment) before running
-the command. The server listens on the given port and answers the client's remoting calls. Set
-`GUL_BASE` to the address the client uses for the server; `127.0.0.1` when both run on
-the same machine. Each login gets its own display name (`Player1`, `Player2`, ...), so two
-clients show distinct names. Point your patched client at this host.
+| variable | default | selects |
+|---|---|---|
+| `GUL_BASE` | `http://127.0.0.1:8096` | the URL clients are told to use; set it to your LAN address |
+| `GUL_BIND` | `0.0.0.0` | the interface the server listens on |
+| `GUL_DSUR_B_OPS` | `startSession` | which remoting ops answer with the datastore update reply |
+| `GUL_DSUR_HX` | `1` | `1` pushes the entity template alongside the entity; `0` sends the entity alone |
+| `GUL_DSUR_HX_TEMPLATE` | `1` | include the template blob (`GUL_DSUR_HX_EMPTY_TEMPLATE=1` sends it empty) |
+| `GUL_HS_MODE` | `resultdsur` | handshake reply shape; `error` returns a `Result.Error` marker |
+| `GUL_USER_POLL_DELAY` | `10` | user-watcher long-poll hold, seconds |
+| `GUL_LOG` | `runtime/mock_appserver.log` | request log path (the log directory is created if missing) |
+
+Each login gets its own display name (`Player1`, `Player2`, ...), so two clients show distinct names.
 
 Patching your client
 --------------------
@@ -199,8 +113,8 @@ Patch a copy of your own executable; nothing patched is distributed here.
 
 Profiles:
 
-  client    passes the launcher check (DRM identity cave), so the stock login
-            flow can reach the local server.
+  client    answers the launcher identity request, so the stock login flow can reach the
+            local server when the game is launched directly rather than through Steam.
   home-model  client plus the cosmetics fix: the HOME player model is dressed.
   play      home-model plus the loading-screen fix: a native-travel join reaches the
             match instead of staying on the LOADING widget.
@@ -211,48 +125,78 @@ Profiles:
             crashing, a listed item applies the entity the UI holds, and an item the
             player owns applies silently. Items the player does not own still report
             the missing container entry (see the limitation above).
-  host      the full working host set: identity cave, post-match loop cave, round
-            timer cave, the login/admission byte patches and the match-data patches.
+  host      the full working host set: identity, post-match loop, round timer, the
+            login/admission byte patches and the match-data patches.
   host-min  the same byte patches without any cave: no .rdata mapping, no stubs.
   list      print every site with its virtual address, file offset and purpose.
 
-A two-client test needs the pak URL patch on both copies, `play` on the joining
-copy and `host` on the hosting copy.
-
-The joining client needs the loading-screen fix (`play`, or `--add no_loading_screen` to another
-profile). A native-travel join never sets the client's map-loaded flag, so the game never dismisses the
-widget it creates; the fix returns from `openLocalLoadingScreen` instead, and the client renders the
-match directly. An unpatched client can use the [overlay](tools/overlay/README.md) instead: it arms the
-latch (`ArmMapLoaded`) eight seconds after the widget appears and the client's own tick closes the
-screen. Calling the close routine directly crashes the render thread.
-
-The `host` build also needs the listen map configuration, or it boots as a client:
-
-  [/Script/EngineSettings.GameMapsSettings]
-  GameDefaultMap=/Game/Maps/GameCon/GameCon_PersistentLevel
-  LocalMapOptions=?game=Tag?listen?IsHost=true?PlayerSessionID=host-1
-
 `--add NAME` and `--drop NAME` override single sites of a profile.
 
-The patcher holds only the original bytes it checks at each site and the stubs it
-injects, and it refuses to write anything unless every original byte still matches:
-it reports the site that did not, so a different game build fails loudly instead of
-producing a half-patched executable. It also refuses to overwrite its own input.
+The patcher holds only the original bytes it checks at each site and the stubs it injects, and it
+refuses to write anything unless every original byte still matches: it reports the site that did
+not, so a different game build fails loudly instead of producing a half-patched executable. It also
+refuses to overwrite its own input.
 
-The caves live in the zero padding at the end of `.rdata` and `.pdata`, so the patch
-raises each used section's VirtualSize to its SizeOfRawData and sets MEM_EXECUTE. Every
-profile then recomputes the PE optional-header checksum so the binary stays self-consistent
-(hygiene, not a DRM gate: the identity check is launcher-based, and the shipped binary's
-own stored checksum is already stale):
+The caves live in the zero padding at the end of `.rdata` and `.pdata`, so the patch raises each
+used section's VirtualSize to its SizeOfRawData and sets MEM_EXECUTE. Every profile then recomputes
+the PE optional-header checksum so the binary stays self-consistent. This is hygiene, not a DRM
+gate: the identity check is launcher-based, and the shipped binary's own stored checksum is already
+stale. If you edit bytes yourself:
 
-  python3 tools/fix_pe_checksum.py Streamline.host.exe        # if you edited bytes yourself
+  python3 tools/fix_pe_checksum.py Streamline.host.exe
 
-The pak patch below is the other half: it redirects the client's backend URL.
+The pak patch is the other half: it redirects the client's backend URL.
 
   python3 tools/pak_patch_url.py "/path/to/Streamline/hns/Content/Paks/hns-WindowsNoEditor.pak" \
       'https://api.playstreamline.com' 'http://127.0.0.1:8096/////////'
 
 Then start the game.
+
+Layout
+------
+
+  mock_appserver.py          Reference implementation of the client wire protocol.
+                             Speaks the game's haxe.remoting dialect, serves the PGS
+                             legs (session, user watcher, channels, polls), and logs
+                             every exchange. This is the seed of the real server.
+
+  tools/haxe_ser.py          Serializer/deserializer for the game's Haxe wire format,
+                             including the datastore update response and entity streams.
+
+  tools/hxinflate.py         Parser for entity type-info streams and inflated entities.
+
+  tools/pak_patch_url.py     Same-length in-place pak patcher. Redirects the game's
+                             backend URL in your own copy, with entry-hash refresh and
+                             footer re-signing. Fully reversible.
+
+  tools/pakdump.py           UE4 v3 pak reader: index listing and extraction.
+
+  tools/registry_server.py   Community-server registry: serves the list the overlay
+                             reads, accepts heartbeats, and TCP-probes entries so dead
+                             servers drop out.
+
+  tools/patch_client.py      Patch your own Streamline.exe into the working builds:
+                             the login/admission byte patches, the identity cave, the
+                             post-match loop and the round timer. Verifies every site
+                             before writing and recomputes the checksum.
+
+  tools/fix_pe_checksum.py   Recompute the PE optional-header checksum after editing
+                             the executable yourself.
+
+  tools/overlay/             Out-of-process overlay (ImGui) for clients that cannot be
+                             patched: it arms the map-loaded latch so a native-travel
+                             join renders, and hosts the find/host buttons. See its
+                             README.
+
+  tools/u16scan.py           UTF-16LE string extractor for binary triage.
+  tools/unwind.py            Unwind/exception metadata helpers for the shipped binary.
+  tools/stackscan.py         Stack-frame scanning helper.
+  tools/throwscan.py         Exception/throw-site scanning helper.
+  tools/memdump.py           Read-only process memory dump helper.
+  tools/mdread.py            Minidump reader.
+
+  tests/                     Offline contract tests for the serializer, entity payloads,
+                             mock replies and patcher tables. No game launch required.
 
 The original server domain
 --------------------------
@@ -264,6 +208,13 @@ Do not point a client at it. Players who still own Streamline on Steam pass the 
 check and reach that host directly, with no patch applied, and a server at that address
 can send the client arbitrary data. Use the pak patch instead: it redirects the client to
 a host you control and is fully reversible.
+
+Roadmap
+-------
+
+Two projects are queued: an orchestrated replacement for the stream layer (in-game voting plus a
+simulated audience driving the game's own mod system), and a host that is not a player. Both are
+described in the [roadmap](https://github.com/Lakeland97/restreamed/wiki/Roadmap).
 
 Contributing
 ------------
@@ -277,6 +228,10 @@ This repository contains only original tools and code: no game files, no decompi
 code, and no assets. The pak patcher applies a byte-level patch to your own copy of the
 game; nothing is redistributed. The server is written from protocol analysis and observed
 client behavior. You need your own legally obtained copy of the game to use any of this.
+
+The identity cave does not defeat a signature check — the client does not perform one. The client
+asks the launcher for a DRM identity; the cave answers that request locally for copies that were
+not started by Steam.
 
 License
 -------

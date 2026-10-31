@@ -23,9 +23,11 @@ Contract under test (all from static trace, see the report):
 
 import os
 import sys
+import tempfile
 import unittest
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(TESTS_DIR)
 sys.path.insert(0, TESTS_DIR)
 
 import test_mock_branch_b as base  # noqa: E402  (reuses the mock harness and parsers)
@@ -106,3 +108,31 @@ class LoginGateContractTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)
+
+class DefaultConfigurationTest(unittest.TestCase):
+    def test_a_bare_launch_returns_the_working_login_reply(self):
+        """No environment: the server still answers startSession with the datastore entity."""
+        import subprocess, sys, time, urllib.request, socket
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GUL_")}
+        port = 8791
+        env["GUL_LOG"] = os.path.join(tempfile.gettempdir(), "mock_defaults.log")
+        proc = subprocess.Popen([sys.executable, "mock_appserver.py", str(port)], env=env,
+                                cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            deadline = time.time() + 10
+            while time.time() < deadline:
+                try:
+                    with socket.create_connection(("127.0.0.1", port), timeout=0.2):
+                        break
+                except OSError:
+                    time.sleep(0.1)
+            req = urllib.request.Request(
+                "http://127.0.0.1:%d/remoting/appserver/startSession" % port,
+                data=b"__x=nah", method="POST")
+            body = urllib.request.urlopen(req, timeout=5).read()
+        finally:
+            proc.terminate()
+        self.assertGreater(len(body), 1000, "default reply is the short form: %d bytes" % len(body))
+        text = body.decode("latin-1")
+        self.assertIn("entityTypeInfo", text)
+        self.assertIn("model.entity.ModelEntity", text)

@@ -51,6 +51,8 @@ BASE_ENV = {
     # allocation (Player1/player1, ...) does not change every fixture's expected ids.
     "GUL_IID": "devuser",
     "GUL_NAME": "DevUser",
+    # The user watcher is a deliberate long-poll; tests must not wait out the hold.
+    "GUL_USER_POLL_DELAY": "0",
 }
 
 
