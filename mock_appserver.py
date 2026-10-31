@@ -42,10 +42,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # Round 6/R789: any 3-segment JWT with payload {"user":...} passes checkPGSAuthToken (no signature
 # check). Keep base64 padding — the client's segment decoder is stricter than a lenient one.
-# Working login configuration baked in as defaults. These select the datastore reply the client
-# needs to finish login and seed its session; without them /startSession returns a 726-byte reply
-# with no entity or template and the client cannot proceed. Set any of them in the environment to
-# A/B-test an alternative (see README, "Running the mock").
+# Working login configuration baked in as defaults (see the public tree for the rationale).
 _WORKING_DEFAULTS = {
     "GUL_BIND": "0.0.0.0",
     "GUL_DSUR_B_OPS": "startSession",
@@ -95,6 +92,20 @@ SESSION_CTX = {
 # accounts: GUL_PGS_ACCOUNTS adds the account records under both the plain and the m_ name.
 # The party is built per request from the caller's identity (see `pgs_party()` below).
 _PGS_ACCOUNTS = os.environ.get("GUL_PGS_ACCOUNTS", "1") == "1"
+
+# --- PGS user roles (the NEW MATCH broadcaster gate) -------------------------------------------
+# `roles` is not a session-context or appserver field: it is a key of the *PGS user record* the
+# client's user watcher long-polls (`GET {pgs}users/<id>/updates/<stamp>` -> {"users":[{...}]}).
+# The client takes users[0], stores it as `ModelWatcher.model` and reads `model.roles`.
+#
+# `HomePlayMenu.onHost` (FUN_140630e50) only reaches the map picker when that array contains
+# "broadcaster" (predicate A, FUN_1407d54c0: `SLGameInstance.userWatcher(+0x30).model(+0x8)
+# .roles.indexOf("broadcaster") >= 0`); otherwise it creates the Streamote onboarding widget.
+# `LoggedInPlayer.isBroadcaster` (FUN_140d46bc0) runs the same test on the player's own watcher.
+#
+# GUL_PGS_ROLES is a comma-separated list, empty by default so the served bytes stay unchanged:
+#   GUL_PGS_ROLES=broadcaster   -> "roles": ["broadcaster"] in every users[0] record
+_PGS_ROLES = [item.strip() for item in os.environ.get("GUL_PGS_ROLES", "").split(",") if item.strip()]
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools"))
 import haxe_ser  # noqa: E402
@@ -310,7 +321,6 @@ def _account_record(ident, provider="twitch"):
               "accountID": ident["accountID"], "displayName": ident["name"],
               "pgsToken": ident["jwt"]}
     if os.environ.get("GUL_ACCOUNT_STREAMOTE") == "1":
-        # The host panel's middle step is a Streamote membership test.
         record["isStreamoteMember"] = True
     return record
 
@@ -360,8 +370,6 @@ def handshake_context():
 def pgs_party():
     ident = current_identity()
     party_id = os.environ.get("GUL_PGS_PARTY_ID", "p1")
-    # GUL_PGS_PARTY_OWNER_RECORD=1 sends the owner as a member record instead of a bare iid; the
-    # host panel path is the suspect consumer (party parser reads owner/partyMax/activePartyID).
     owner = ident["iid"]
     if os.environ.get("GUL_PGS_PARTY_OWNER_RECORD") == "1":
         owner = {"id": ident["iid"], "playerIID": ident["iid"], "accountID": ident["accountID"],
@@ -896,8 +904,7 @@ def process_url_join_reply():
         return haxe_ser.handshake_result_dsur(
             haxe_ser.HxEnum("appserver.api.UrlAction", 3, []))
     # processUrl is a public-plane op: its Success payload must be a branch-A
-    # DataStoreUpdateResponse (the consumer dyncasts to it before reading returnVal). A bare
-    # Result.Success(UrlAction) fails that cast with a null dereference and the handler never runs.
+    # DataStoreUpdateResponse (the consumer dyncasts to it before reading returnVal).
     action = haxe_ser.HxEnum("appserver.api.UrlAction", 0, [{
         "host": host, "port": port, "party": party,
         "playerSession": player_session, "gameSession": game_session}])
@@ -1277,6 +1284,10 @@ class Handler(BaseHTTPRequestHandler):
                 "active_party": os.environ.get("GUL_PGS_PARTY_ID", ""),
                 "activePartyID": os.environ.get("GUL_PGS_PARTY_ID", ""),
             }
+            if _PGS_ROLES:
+                # Array of Strings, never a serialized token: this leg is plain JSON and the client
+                # runs Array.indexOf("broadcaster") over it.
+                user["roles"] = list(_PGS_ROLES)
             slog(f"    (user watcher {p} -> users[{iid}] stamp={next_stamp})")
             self._reply(json.dumps({"users": [user]}).encode(), ctype="application/json")
             return

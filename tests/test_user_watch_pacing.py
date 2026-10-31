@@ -86,6 +86,33 @@ class UserWatchPacingTest(unittest.TestCase):
         self.assertEqual(body["users"][0]["update_stamp"], 6)
         self.assertGreaterEqual(elapsed, 0.2, "GUL_USER_POLL_DELAY was ignored: %.3fs" % elapsed)
 
+    # --- the broadcaster role lives in this payload, not in the session context -----------------
+    # `HomePlayMenu.onHost` reaches the map picker only when
+    # `SLGameInstance.userWatcher.model.roles.indexOf("broadcaster") >= 0`, and the watcher model is
+    # exactly `users[0]` of this reply. The array must be a JSON list of strings.
+
+    def test_roles_absent_by_default(self):
+        # Default-off keeps the served bytes identical for every other probe.
+        server = self._server({"GUL_USER_WATCH_HOLD": "0"})
+        body, _ = self._watch(server, 5)
+        self.assertNotIn("roles", body["users"][0],
+                         "roles must not appear unless GUL_PGS_ROLES asks for it")
+
+    def test_roles_is_served_as_an_array_of_strings(self):
+        server = self._server({"GUL_USER_WATCH_HOLD": "0", "GUL_PGS_ROLES": "broadcaster"})
+        body, _ = self._watch(server, 5)
+        roles = body["users"][0].get("roles")
+        self.assertIsInstance(roles, list, "roles must be a JSON array, not a string: %r" % (roles,))
+        self.assertEqual(roles, ["broadcaster"])
+
+    def test_roles_accepts_a_list_with_extra_members(self):
+        # The gate is indexOf("broadcaster") >= 0, so other roles may ride along.
+        server = self._server({"GUL_USER_WATCH_HOLD": "0",
+                               "GUL_PGS_ROLES": "viewer, broadcaster ,mod"})
+        body, _ = self._watch(server, 5)
+        self.assertIn("broadcaster", body["users"][0]["roles"])
+        self.assertEqual(len(body["users"][0]["roles"]), 3)
+
 
 if __name__ == "__main__":
     unittest.main()

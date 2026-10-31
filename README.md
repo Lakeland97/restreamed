@@ -108,6 +108,7 @@ session context) is the default. The knobs below exist for A/B-testing an altern
 | `GUL_NAME` | auto | pin the display name; pair it with `GUL_IID` |
 | `GUL_COOKIES` | `0` | `1` issues the `hns_session` cookie so keyless legs keep the session identity (LAN tests with two clients) |
 | `GUL_PGS_PARTY_ID` | `p1` | party id reported by the PGS party legs |
+| `GUL_PGS_ROLES` | empty | comma-separated PGS roles on the user record; `broadcaster` makes NEW MATCH skip the stream sign-in and open the map picker |
 | `GUL_LOG` | `runtime/mock_appserver.log` | request log path (the log directory is created if missing) |
 
 Each login gets its own display name (`Player1`, `Player2`, ...), so two clients show distinct names.
