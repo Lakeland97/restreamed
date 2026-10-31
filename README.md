@@ -70,8 +70,8 @@ Status
 
 ### What does not work
 
-- The stream layer — no chat polls, rule votes, bets or gameplay mods. See the
-  [roadmap](https://github.com/Lakeland97/restreamed/wiki/Roadmap).
+- The stream layer — no chat polls, rule votes, bets or gameplay mods. What the layer was and what a
+  local replacement needs: [StreamLayer](https://github.com/Lakeland97/restreamed/wiki/StreamLayer).
 - A silent wardrobe selection for every item. With `all-cosmetics-equip` the slot pages open, a pick
   applies the item and it persists. An item the player owns applies with no dialog. An item outside the
   player's starting set applies but the post-apply refresh reports
@@ -227,8 +227,9 @@ Roadmap
 -------
 
 Two projects are queued: an orchestrated replacement for the stream layer (in-game voting plus a
-simulated audience driving the game's own mod system), and a host that is not a player. Both are
-described in the [roadmap](https://github.com/Lakeland97/restreamed/wiki/Roadmap).
+simulated audience driving the game's own mod system), and a host that is not a player. The first is
+described in [StreamLayer](https://github.com/Lakeland97/restreamed/wiki/StreamLayer); both are sequenced
+in the [roadmap](https://github.com/Lakeland97/restreamed/wiki/Roadmap).
 
 Contributing
 ------------
