@@ -3,10 +3,10 @@
 
 The mock logs every request body through `haxe_ser.unserialize_two` and never uses the result for
 routing, so a decode failure is silent evidence loss: for months the log carried `DECODE FAILED`
-for every request that contained an enum, which is most of them (R966/R967). These tests pin the
-tokens that were missing, using bodies captured from `runtime/mock_appserver.log`.
+for every request that contained an enum, which is most of them. These tests pin the
+tokens that were missing, using captured request bodies.
 
-Acceptance (worker trace R967): mock_appserver.log:25052 must decode to
+Acceptance: a captured `equipCosmeticItems` request must decode to
 `[None, [<CharacterGender enum idx 1>, "skintone_three", [], []]]`.
 """
 

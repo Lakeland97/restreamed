@@ -7,7 +7,7 @@ resolves to a registered client class. The template is resolved client-side from
 `Generated/templates.tplc`; the payload must therefore carry no template object, only the
 `ModelEntity` whose `templateID` names it.
 
-What is pinned here, and where it came from (runtime/TPL_ENTITY_PAYLOAD.md):
+What is pinned here, and where it came from:
 
   * the five component definitions and their `templateData` arities — decoded from the
     client's own `player` payload; they are identical to the component class boots'
@@ -19,7 +19,7 @@ What is pinned here, and where it came from (runtime/TPL_ENTITY_PAYLOAD.md):
 
 Everything is built with the mock's own serializer modules (`tools/hxinflate.py`,
 `tools/haxe_ser.py`) — the same code path `mock_appserver.py` uses — so no HTTP server, no
-game, no VM, and no network are involved.
+game, and no network are involved.
 
 Run directly (pytest is not required):
 
@@ -94,7 +94,7 @@ def _entity_body(iid="devuser"):
 
     Slot 7 is the entity's componentHash. `""` deliberately differs from the template's
     `328fadb2…`, so FUN_140896730 constructs the template's five components instead of
-    returning early (runtime/PLAYER_COMPONENTS.md §2-§6).
+    returning early.
     """
     return [iid, PLAYER_TEMPLATE_ID, {}, None, None, None, ""]
 
@@ -193,7 +193,7 @@ class PlayerTemplateEntityPayloadTest(unittest.TestCase):
 
     def test_element_is_entity_only_no_template_declaration(self):
         # The client resolves `templateID` from its own template store; a template stream in
-        # updatedEntities cannot dyncast to ModelEntity (R815/R928 crash shape).
+        # updatedEntities cannot dyncast to ModelEntity (the crash shape observed when one is sent).
         element = self.updated[0]
         self.assertNotIn("model.tpl.", element)
         for name, _auto, _props in PLAYER_TEMPLATE:

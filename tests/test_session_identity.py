@@ -16,7 +16,7 @@ These tests pin:
   * `GUL_IID`/`GUL_NAME` still pin one identity for single-client tests;
   * `GUL_NAME_PREFIX` names the allocated identities.
 
-No client, no game, no VM: the mock runs on an ephemeral port like the other offline tests.
+No client and no game: the mock runs on an ephemeral port like the other offline tests.
 """
 
 import json

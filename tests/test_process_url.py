@@ -1,8 +1,7 @@
 #!/usr/bin/env python3
 """processUrl reply: Result.Success(UrlAction.UJoinGame({...})).
 
-The wire literal is verified against the client contract in
-runtime/PROCESSURL_JOIN.md: tag 0 is UJoinGame, port is a Haxe Int, the session
+The wire literal was verified against the client contract: tag 0 is UJoinGame, port is a Haxe Int, the session
 string becomes ?PlayerSessionID= on the travel URL.
 """
 import os

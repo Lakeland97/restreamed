@@ -10,7 +10,7 @@ template declaration may appear, because the client resolves `templateID` from i
 The assertions are made against a real mock reply: the mock is started as a subprocess on an
 ephemeral localhost port, a fake `__x=nah` call is POSTed to
 `/remoting/appserver/startSession`, and the reply is decoded with `tools/hxinflate.py` (the wire
-format owner). No game, VM, SSH, or network access outside 127.0.0.1 is used.
+format owner). No game or network access outside 127.0.0.1 is used.
 
 Run directly (pytest is not required):
 
@@ -93,7 +93,7 @@ class MockStartSessionServer:
         env = {k: v for k, v in os.environ.items() if not k.startswith("GUL_")}
         env.update(BASE_ENV)
         env.update(extra_env or {})
-        env["GUL_LOG"] = self._log_path          # keep the repo's runtime/ log untouched
+        env["GUL_LOG"] = self._log_path          # keep the repo log untouched
         env["GUL_BIND"] = "127.0.0.1"
 
         last_error = None

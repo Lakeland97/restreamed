@@ -50,7 +50,7 @@ class TrackingReplyTest(unittest.TestCase):
         payload = self._payload()
         second = payload[1:]
         self.assertTrue(second)
-        self.assertNotEqual(second, "n", "value2 = null was the silent-run shape (R655)")
+        self.assertNotEqual(second, "n", "value2 = null was the silent-run shape")
 
     def test_the_check_rejects_the_known_fatal_single_value_form(self):
         server = base.MockStartSessionServer({"GUL_TRACK_DELAY": "0", "GUL_TRACK_STYLE": "single"})

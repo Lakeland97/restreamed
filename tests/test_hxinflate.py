@@ -2,7 +2,7 @@
 
 The grammar these assert comes from the library the client links (proletariatgames/hxinflate,
 serialization/Deflater.hx + Inflater.hx) and is documented in DECOMPILE_NOTES "R-spec". If the
-writer and the reader here agree, a stream is structurally valid before it ever reaches the guest.
+writer and the reader here agree, a stream is structurally valid before it ever reaches the client.
 """
 import os
 import sys

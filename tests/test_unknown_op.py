@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Unknown-op fallback tests (R791 regression guard).
+"""Unknown-op fallback tests (regression guard).
 
 The mock answers every remoting op it has no shape for with
 `Result.Success(<empty DataStoreUpdateResponse>)` instead of a remoting exception, so an
-unimplemented op makes the client continue and name what it wanted rather than stop (R791). Most of
-the public surface is in that state today (R964 coverage matrix: 17 of 31+ ops have a shape), which
+unimplemented op makes the client continue and name what it wanted rather than stop. Most of
+the public surface is in that state today (17 of 31+ ops have a shape), which
 makes the fallback load-bearing — a regression here would look like "the client stopped at op X"
 and cost a probe round.
 
@@ -42,7 +42,7 @@ class UnknownOpFallbackTest(unittest.TestCase):
         self.assertIn("model.Result", payload)
         self.assertIn("Success", payload)
         self.assertNotIn("Exception", payload,
-                         "an exception makes the client error out (R791)")
+                         "an exception makes the client error out")
         self.assertIn("UNKNOWN OP %r" % UNIMPLEMENTED_OP, self._log())
 
     def test_implemented_op_never_takes_the_fallback(self):

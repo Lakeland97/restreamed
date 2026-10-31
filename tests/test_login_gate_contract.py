@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Login-gate contract tests (R965/R966).
+"""Login-gate contract tests.
 
-Turns the static conclusions of `runtime/LOGIN_GATE_NEXT.md` into offline assertions against the
-mock's own replies. No client, no game, no VM: every test drives `mock_appserver.py` on an
+Turns the static conclusions about the login flow into offline assertions against the
+mock's own replies. No client and no game: every test drives `mock_appserver.py` on an
 ephemeral port and parses what it serves.
 
 Contract under test (all from static trace, see the report):
@@ -12,7 +12,7 @@ Contract under test (all from static trace, see the report):
   must be identical or the blob lookup misses.
 - T2 the completion reads exactly `playerIID, pgsToken, accounts, displayName, accountID, provider`
   (plus `session`, tolerated null) off the `returnVal` context.
-- T3 `provider` must be an `AccountProvider` enum instance (Fake=0, Steam=1, Twitch=2 — R941), not
+- T3 `provider` must be an `AccountProvider` enum instance (Fake=0, Steam=1, Twitch=2), not
   the string "twitch": the consumer casts it, and a String leaves `LoggedInPlayer+0xa8` null.
   The host-side Reader cannot decode the enum-by-name form, so this is asserted on the wire token.
 - T4 the entity's seventh value (`componentHash`) is not the player template hash, so the client
@@ -68,13 +68,13 @@ class LoginGateContractTest(unittest.TestCase):
         self.assertTrue(context.get("displayName"))
         self.assertTrue(context.get("accountID"))
         self.assertIsInstance(context.get("accounts"), list)
-        self.assertTrue(context.get("accounts"), "an empty accounts array is the R887 failure")
+        self.assertTrue(context.get("accounts"), "an empty accounts array breaks the contract")
 
     # T3 ---------------------------------------------------------------------------------------
     def test_provider_serialises_as_the_account_provider_enum(self):
         server = base.MockStartSessionServer({
             "GUL_CTX_PROVIDER_ENUM": "1",
-            "GUL_CTX_PROVIDER_IDX": "2",   # Twitch, per R941's Fake=0/Steam=1/Twitch=2 table
+            "GUL_CTX_PROVIDER_IDX": "2",   # Twitch, per the provider table (Fake=0, Steam=1, Twitch=2)
         })
         self.addCleanup(server.close)
         body = server.start_session().decode("latin-1")

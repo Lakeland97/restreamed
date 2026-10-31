@@ -132,7 +132,7 @@ def dsur_branch_b(config, entities_value, entity_blob, extra_classes=()) -> str:
         s.type_index(c)
     # The wire order is [Result enum][declarations][payload], and the client builds its string
     # table in that same order. Serialize the enum strings before the payload so R<n> indices
-    # cannot be shifted by the payload's first-seen strings (the R933 `accounts` bug).
+    # cannot be shifted by the payload's first-seen strings (the `accounts` bug).
     prefix = "n" + "w" + s.value("model.Result") + s.value("Success") + ":1"
     decls = s.decl_fragment()          # any classes registered before this call, in index order
     payload = ("V" + s.value("appserver.remoting.DataStoreUpdateResponse")
@@ -217,7 +217,7 @@ class HxEnum:
 class HxClass:
     """A haxe class that can be referenced in a stream: a name plus ordered field names.
 
-    R798: the client assigns instance values POSITIONALLY (DECOMPILE_NOTES: "T<idx>: + positional
+    The client assigns instance values POSITIONALLY (decompiled: "T<idx>: + positional
     field values + g"), so the declared names are metadata for the reader's type table while the
     ORDER is what lands values in the real class's fields.
     """

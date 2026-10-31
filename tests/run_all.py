@@ -10,7 +10,7 @@ The public tree ships the self-contained modules; the lab tree adds artifact-bac
 modules, so the check total differs. An import failure is reported and counts as a
 failure, not a skip.
 
-No client, no game, no VM: these drive `mock_appserver.py` on ephemeral ports and parse
+No client and no game: these drive `mock_appserver.py` on ephemeral ports and parse
 its replies.
 """
 

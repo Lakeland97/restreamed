@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""User-watch pacing tests — the lever that stops the Twitch broadcast-check storm (R1020).
+"""User-watch pacing tests — the lever that stops the Twitch broadcast-check storm.
 
 `GET {pgs}/users/<id>/updates/<stamp>` is the ModelWatcher long-poll started at `LoggedIn`
 (`SLGameInstance.startWatchingUser`). Every *delivered* update runs `LoginGameMode.onUserUpdate`,
@@ -9,8 +9,8 @@ round trip, every check is cancelled and the client logs, several times per 100 
 
     HttpClient.hx:144: Ignoring successful request because it was cancelled. url=...
 
-That is the R1018 allocation storm. The client has no throttle of its own: with the mock holding the
-long-poll for 10 s the same check runs once per 10.1 s (R1018b logs), and with no hold it storms.
+That is the allocation storm. The client has no throttle of its own: with the mock holding the
+long-poll for 10 s the same check runs once per 10.1 s (measured logs), and with no hold it storms.
 
 These tests pin the two server-side knobs that end it without a client patch and without any network:
 
@@ -19,7 +19,7 @@ These tests pin the two server-side knobs that end it without a client patch and
     array is the separate 10 s watcher-restart error.
   * `GUL_USER_WATCH_HOLD` bounds the re-poll rate at the same time (echo alone would busy-poll).
 
-No client, no game, no VM: the mock runs on an ephemeral port like the other offline tests.
+No client and no game: the mock runs on an ephemeral port like the other offline tests.
 """
 
 import json
@@ -73,7 +73,7 @@ class UserWatchPacingTest(unittest.TestCase):
 
     def test_hold_bounds_the_re_poll_rate(self):
         # echo alone still busy-polls; the hold is what bounds the loop. 0.4 s is a bound, not the
-        # 10 s window that R1017 suspected of parking a GC-registered thread.
+        # 10 s window suspected of parking a GC-registered thread.
         server = self._server({"GUL_USER_WATCH_HOLD": "0.4", "GUL_USER_WATCH_STAMP": "echo"})
         body, elapsed = self._watch(server, 5)
         self.assertEqual(body["users"][0]["update_stamp"], 5)
