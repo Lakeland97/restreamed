@@ -306,9 +306,13 @@ def _jwt():
 
 
 def _account_record(ident, provider="twitch"):
-    return {"provider": provider, "id": ident["iid"], "providerString": "twitch",
-            "accountID": ident["accountID"], "displayName": ident["name"],
-            "pgsToken": ident["jwt"]}
+    record = {"provider": provider, "id": ident["iid"], "providerString": "twitch",
+              "accountID": ident["accountID"], "displayName": ident["name"],
+              "pgsToken": ident["jwt"]}
+    if os.environ.get("GUL_ACCOUNT_STREAMOTE") == "1":
+        # The host panel's middle step is a Streamote membership test.
+        record["isStreamoteMember"] = True
+    return record
 
 
 def session_context():
