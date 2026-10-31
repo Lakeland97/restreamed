@@ -18,8 +18,8 @@ Works:
 - The full round lifecycle on the host, with timed rounds, through MatchOver to the awards UI, then
   back to `WaitingForPlayers` and the next round.
 - A finished round records its winner and the score it carries into the match payload.
-- Joining from a server-sent join URL: the mock's `processUrl` reply reaches the handler and the
-  client travels to the returned host, provided a listen host is there.
+- Joining from a server-sent join URL: the mock's `processUrl` reply reaches the handler and the client
+  joins the returned listen host (`Welcomed`; the host logs `Join succeeded`).
 - Practice, challenge and tutorial modes load and run locally. The tutorial is one-shot until
   its played flag is reset.
 
