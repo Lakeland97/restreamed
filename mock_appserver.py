@@ -355,8 +355,9 @@ def handshake_context():
 
 def pgs_party():
     ident = current_identity()
-    party = {"id": "p1", "owner": ident["iid"], "partyMax": 4, "users": [],
-             "activePartyID": "", "invite_only": False}
+    party_id = os.environ.get("GUL_PGS_PARTY_ID", "p1")
+    party = {"id": party_id, "owner": ident["iid"], "partyMax": 4, "users": [],
+             "activePartyID": party_id, "invite_only": False}
     if _PGS_ACCOUNTS:
         account = _account_record(ident)
         party["accounts"] = [account]
@@ -1263,7 +1264,8 @@ class Handler(BaseHTTPRequestHandler):
                 "displayName": ident["name"],
                 "provider": "twitch",
                 "providerString": "twitch",
-                "active_party": "",
+                "active_party": os.environ.get("GUL_PGS_PARTY_ID", ""),
+                "activePartyID": os.environ.get("GUL_PGS_PARTY_ID", ""),
             }
             slog(f"    (user watcher {p} -> users[{iid}] stamp={next_stamp})")
             self._reply(json.dumps({"users": [user]}).encode(), ctype="application/json")
