@@ -43,6 +43,9 @@ def write_fstring_len_only(path):
 
 
 def main():
+    if len(sys.argv) == 2 and sys.argv[1] in ("-h", "--help"):
+        print(__doc__)
+        sys.exit(0)
     if len(sys.argv) == 4:
         pak, old, new = sys.argv[1], sys.argv[2].encode(), sys.argv[3].encode()
         if len(old) != len(new):

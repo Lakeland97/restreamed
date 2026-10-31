@@ -256,6 +256,15 @@ SITES = (
        "8338000f846b8d64fc4c8d4d584c8d442440e9e88c64fc",
        "empty id: take the no-template path; otherwise replay the displaced setup and continue"),
 
+    _s("singleton_iid", 0x140894CD5, 0x008940D5, "4c8d4d07", "4c8d4df7",
+       "scratch: a template singleton's iid is its templateID, not __singleton__"),
+
+    _s("cosmetic_create_hook", 0x141084D44, 0x01084144, "0f8492000000", "e9b7f9f20290",
+       "scratch: a container miss for a template id goes to the create-on-miss cave"),
+    _s("cosmetic_create_cave", 0x143FB4700, 0x03E20700, bytes(128),
+       "7505e9d5060dfd5356574883ec7848c744243000000000488d4c24404c89fa4c8d4424304d89f9e894f08dfc837c245c007441488d4c2460e8e34451fc48894424684c89f1488d5424404c8d442468e83cee0cfd837c245c0074194c89e1488d542468e8987793fc4883c4785f5e5be9ae0c0dfd4883c4785f5e5be9ca050dfd",
+       "scratch: createByID(id), add it to the container, return Success(entity)"),
+
     # --- optional sites, not part of a profile -------------------------------
     _s("matchover_m2", 0x140CC01BE, 0x00CBF5BE, "0f84d9050000", "909090909090",
        "drop the MatchOver +0x31 early exit; loop3 keeps it as the clock gate"),
@@ -273,7 +282,8 @@ SITE_ORDER = {site.name: index for index, site in enumerate(SITES)}
 # Stub bodies live in the .rdata tail; a profile that includes one must map that
 # tail executable and must include its hook.
 CAVE_BODIES = ("identity_cave", "loop3_cave", "round_timer_cave",
-               "equip_fatal_cave", "equip_own_cave", "cosmetic_nullid_cave")
+               "equip_fatal_cave", "equip_own_cave", "cosmetic_nullid_cave",
+               "cosmetic_create_cave")
 CAVE_GROUPS = (
     ("identity cave", ("identity_hook", "identity_cave", "contestants_phase")),
     ("post-match loop cave", ("loop3_hook", "loop3_cave")),
