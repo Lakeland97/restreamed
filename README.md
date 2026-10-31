@@ -25,7 +25,10 @@ Works:
 
 Does not work:
 
-
+- The stream layer. Streamline's original design paired the client with a web front end and a live
+  service that ran chat polls, rule votes, bets, flash sales and gameplay mods. None of that is
+  restored: there is no Twitch login, no stream page, and no poll feed, so the mod system the client
+  still contains never starts. See "Where this is going" below.
 - A silent wardrobe selection for every item. With `all-cosmetics-equip` the slot pages open, a pick
   applies the item and it persists (it follows to HOME and other pages). An item the player owns
   applies with no dialog. An item outside the player's starting set applies but the post-apply refresh
@@ -34,6 +37,66 @@ Does not work:
 - The host has no appserver session, so entity lookups miss. The visible effect is cosmetic.
 
 Design notes, byte patches and open problems: [wiki](https://github.com/Lakeland97/restreamed/wiki).
+
+What this project does, what it changes, and where it is going
+--------------------------------------------------------------
+
+### Implemented
+
+- **A working local backend.** `mock_appserver.py` speaks the client's haxe.remoting dialect and
+  returns the datastore payloads the client needs to finish login, seed a session, and name each
+  player (`Player1`, `Player2`, ...).
+- **A patcher for your own client.** Byte-verified sites for the launcher identity, the HOME player
+  model, the join loading screen, the cosmetic catalogue and selection, the host admission patches,
+  the post-match loop and the round timer, with a PE checksum repair and a same-length pak URL
+  redirect.
+- **Playable matches.** A client-hosted listen server, a second client joining by native travel,
+  replicated round phases, the full round lifecycle to MatchOver and back to `WaitingForPlayers`, and
+  the server-sent join link that routes a client into a host.
+- **Cosmetics.** Every catalogue item can be browsed; owned items equip with no dialog, unowned ones
+  equip and report the missing container entry.
+- **Offline tests.** The serializer, entity payloads, mock replies and patcher tables are covered by
+  a test suite that runs without the game.
+
+### Liberties we took
+
+- **The host is a player.** The shipped game has no dedicated-server build, so "server" here means a
+  patched client hosting a listen match.
+- **The backend is reconstructed, not recovered.** Request and reply shapes are derived from how the
+  client parses them, not from any original server source. Where the client tolerated a plausible
+  payload we used it.
+- **Identity is faked at the launcher boundary.** A small code cave returns a fixed DRM identity
+  instead of passing Steam or Twitch authentication.
+- **The join loading screen is bypassed, not satisfied.** A native-travel join never arms the client's
+  map-loaded latch, so the `play` profile returns early from `openLocalLoadingScreen`; the overlay does
+  the same from outside the process.
+- **The cosmetic catalogue is widened.** The client is patched to list the whole catalogue instead of
+  the owned set, and a template singleton takes its template id as its instance id so an owned pick
+  resolves. Items outside the 48 starting items still have no container entry; they equip and persist,
+  but the client reports the missing entry.
+- **Onboarding is a setting, not a feature.** Marking the tutorial played is a launch-time settings
+  value; nothing on the server models it.
+
+### Where this is going: an orchestrated stream layer
+
+Streamline was built as two halves: the arena client, and a live layer that watched a Twitch channel
+and turned audience actions into gameplay. The client still carries that half — `sl.game.pgs.PGSManager`,
+`ModVotingManager`, `BettingManager`, `FlashSaleManager`, `BingoManager`, `WagerGame`, the mod
+components (`ModComponent`, `ModGroupComponent`, `PropertyModManager`), `StreamoteUtils`, and the
+endpoint paths `/poll`, `/vote/`, `/chat/say`, `/broadcast` alongside Twitch IRC and the Twitch API.
+None of it is connected today, which is why the "Stream" in Streamline is missing.
+
+The goal is not to bring Twitch back. It is to drive the same machinery locally and deliberately:
+
+- **In-game voting.** Players vote on the next rule, physics change or mini-game between rounds,
+  using the client's own voting and mod pipeline.
+- **A simulated audience.** An algorithm stands in for the stream: it proposes mods, votes with a
+  believable spread, and keeps the cadence of a live channel so a solo player or a small group still
+  gets the original rhythm.
+- **Real consequences.** Whatever wins is applied through the existing mod system, so physics, rules
+  and mini-games actually change.
+
+That work is research plus a new server-side feature; it is not implemented yet.
 
 Layout
 ------
