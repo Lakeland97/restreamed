@@ -939,7 +939,11 @@ def client_session_id():
 
 
 def slog(line):
-    with open(os.environ.get("GUL_LOG", LOG_PATH), "a") as f:
+    path = os.environ.get("GUL_LOG", LOG_PATH)
+    parent = os.path.dirname(path)
+    if parent and not os.path.isdir(parent):
+        os.makedirs(parent, exist_ok=True)
+    with open(path, "a") as f:
         f.write(line + "\n")
 
 
