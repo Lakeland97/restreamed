@@ -253,8 +253,15 @@ class ProfileTest(unittest.TestCase):
         self.assertEqual(
             equip,
             base | {"equip_oob_hook", "equip_fatal_cave",
-                    "equip_own_hook", "equip_own_cave"},
+                    "equip_own_hook", "equip_own_cave", "singleton_iid"},
         )
+        by_name = {site.name: site for site in pc.SITES}
+        site = by_name["singleton_iid"]
+        def as_bytes(v):
+            return v if isinstance(v, (bytes, bytearray)) else bytes.fromhex(v)
+        self.assertEqual(as_bytes(site.original), b"\x4c\x8d\x4d\x07")
+        self.assertEqual(as_bytes(site.patched), b"\x4c\x8d\x4d\xf7")
+        self.assertEqual(site.offset, 0x008940D5)
         self.assertIn("cosmetic_nullid_cave", base)
         self.assertTrue(pc.PROFILES["all-cosmetics"].maps_rdata_exec)
         self.assertTrue(pc.PROFILES["all-cosmetics-equip"].maps_rdata_exec)

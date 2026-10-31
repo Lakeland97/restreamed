@@ -256,6 +256,10 @@ SITES = (
        "8338000f846b8d64fc4c8d4d584c8d442440e9e88c64fc",
        "empty id: take the no-template path; otherwise replay the displaced setup and continue"),
 
+    _s("singleton_iid", 0x140894CD5, 0x008940D5, "4c8d4d07", "4c8d4df7",
+       "a template singleton's instance id is its templateID, so the post-apply refresh asks the "
+       "container for the item the player just equipped"),
+
     # --- optional sites, not part of a profile -------------------------------
     _s("matchover_m2", 0x140CC01BE, 0x00CBF5BE, "0f84d9050000", "909090909090",
        "drop the MatchOver +0x31 early exit; loop3 keeps it as the clock gate"),
@@ -343,10 +347,11 @@ PROFILES = {
     ),
     "all-cosmetics-equip": Profile(
         "all-cosmetics-equip",
-        "all-cosmetics plus the wardrobe fixes: the slot pages open (empty ids take the no-template path), unowned/absent picks report the game's error instead of crashing, and a selected item applies the entity the UI holds (the container still lacks that entity)",
+        "all-cosmetics plus the wardrobe fixes: the slot pages open (empty ids take the no-template path), an unowned pick reports the game's error instead of crashing, a selected item applies the entity the UI holds, and an item the player owns applies with no dialog",
         CLIENT_SITES + ("cosmetic_clear_skip", "no_loading_screen", "cosmetics_all",
                         "cosmetic_nullid_hook", "cosmetic_nullid_cave",
-                        "equip_oob_hook", "equip_fatal_cave", "equip_own_hook", "equip_own_cave"),
+                        "equip_oob_hook", "equip_fatal_cave", "equip_own_hook", "equip_own_cave",
+                        "singleton_iid"),
         True,
     ),
     "all-cosmetics": Profile(

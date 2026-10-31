@@ -26,10 +26,11 @@ Works:
 Does not work:
 
 
-- A clean wardrobe selection. With `all-cosmetics-equip` the slot pages open, picking an item applies
-  it and the choice persists (it follows to HOME and other pages), but the post-apply refresh reports
-  `Entity __singleton__ does not exist in collection` in a handled dialog. The client stays up; the
-  cosmetic is kept.
+- A silent wardrobe selection for every item. With `all-cosmetics-equip` the slot pages open, a pick
+  applies the item and it persists (it follows to HOME and other pages). An item the player owns
+  applies with no dialog. An item outside the player's starting set applies but the post-apply refresh
+  reports `Entity <item> does not exist in collection` in a handled dialog — the inventory holds the
+  48 starting items and the catalogue is larger than that. The client stays up; the cosmetic is kept.
 - The host has no appserver session, so entity lookups miss. The visible effect is cosmetic.
 
 Design notes, byte patches and open problems: [wiki](https://github.com/Lakeland97/restreamed/wiki).
@@ -130,10 +131,11 @@ Profiles:
             match instead of staying on the LOADING widget.
   all-cosmetics  play plus the full cosmetic id set and the null-id guard: every
             slot page opens and lists its items.
-  all-cosmetics-equip  the above plus the selection caves: an out-of-range or unowned
-            pick reports the game's error instead of crashing, and a listed item
-            applies the entity the UI holds. Completing a selection still reports the
-            missing singleton entity (see the limitation above).
+  all-cosmetics-equip  the above plus the selection caves and the item-id fix: an
+            out-of-range or unowned pick reports the game's error instead of
+            crashing, a listed item applies the entity the UI holds, and an item the
+            player owns applies silently. Items the player does not own still report
+            the missing container entry (see the limitation above).
   host      the full working host set: identity cave, post-match loop cave, round
             timer cave, the login/admission byte patches and the match-data patches.
   host-min  the same byte patches without any cave: no .rdata mapping, no stubs.
