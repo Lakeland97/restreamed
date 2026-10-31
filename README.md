@@ -5,16 +5,22 @@ Community server and tooling for Streamline (Proletariat, 2016), a 16-player are
 whose official servers shut down in April 2018. This project implements the backend the
 client expects and documents the client patches needed to run it locally.
 
-Try it: two clients, one match
-------------------------------
+The tooling runs on Python 3.9 or newer with only the standard library. The game is Windows-only; the
+patchers edit files, so they run on any platform with Python.
 
-What this buys you: a host, a joiner, and a live match, on your own machine or your LAN.
+Host and join
+-------------
+
+You'll end up with two clients in a live match, on one machine or over a LAN.
 
 1. **Get your own copy of the game.** You need your own legally obtained copy; nothing in this
    repository ships game code or assets.
 2. **Redirect the pak, once per copy.** The client's backend URL lives in the pak:
    `python3 tools/pak_patch_url.py "<copy>/hns/Content/Paks/hns-WindowsNoEditor.pak" \
    'https://api.playstreamline.com' 'http://127.0.0.1:8096/////////'`
+   The address in the pak is where the client dials, so it must match `GUL_BASE` exactly. The patch
+   is same-length: the trailing `/` characters pad the replacement to the original length, so a
+   longer host name leaves less room and can run out.
 3. **Patch copy A as the host:**
    `python3 tools/patch_client.py --profile host --in "<A>/hns/Binaries/Win64/Streamline.exe" --out Streamline.host.exe`
    then put `Streamline.host.exe` back as `Streamline.exe` and add the listen map to
@@ -27,8 +33,8 @@ What this buys you: a host, a joiner, and a live match, on your own machine or y
 4. **Patch copy B as the joiner:** `--profile play`.
 5. **Start the mock** where both copies can reach it:
    `python3 mock_appserver.py 8096`
-   The defaults are the working configuration. Set `GUL_BASE` to the address the clients use
-   (for example `http://192.168.1.20:8096`); `127.0.0.1` is the default.
+   The defaults are the working configuration. For a LAN, set both the pak address and `GUL_BASE`
+   to the same address, for example `http://192.168.1.20:8096`; `127.0.0.1` is the default.
 6. **Start A.** It boots as a listen server on UDP 7777 and waits for a second player.
 7. **Start B.** It logs in through the mock; the mock's `processUrl` reply carries the join link,
    and B travels into A's match.
@@ -45,9 +51,9 @@ Status
 ### What works
 
 - Login handshake and session context against the local server, through to the HOME menu.
-- A client-hosted listen server on UDP 7777 that waits for a second player.
-- A second client joining by native travel, with round phases replicated to both peers, rendering and
-  playing the live match (the `play` profile removes the loading screen a native-travel join leaves up).
+- A client-hosted listen server on UDP 7777, and a second client joining it by native travel,
+  with round phases replicated to both peers, rendering and playing the live match (the `play`
+  profile removes the loading screen a native-travel join leaves up).
 - Player identity and contestant registration in a match.
 - The full round lifecycle on the host, with timed rounds, through MatchOver to the awards UI, then
   back to `WaitingForPlayers` and the next round.
@@ -56,8 +62,7 @@ Status
   joins the returned listen host (`Welcomed`; the host logs `Join succeeded`).
 - Practice, challenge and tutorial modes load and run locally. The tutorial is one-shot until
   its played flag is reset.
-- The community registry: `tools/registry_server.py` serves the server list the overlay reads, accepts
-  heartbeats, and TCP-probes entries so dead servers drop out.
+- The community registry serves the server list the overlay reads.
 - The local backend and patcher: `mock_appserver.py` speaks the client's haxe.remoting dialect and
   returns the datastore payloads that finish login and seed a session; the patcher verifies every byte
   it replaces and repairs the PE checksum; an offline suite covers the serializer, entity payloads,
@@ -76,8 +81,8 @@ Status
 
 Design notes, byte patches and open problems: [wiki](https://github.com/Lakeland97/restreamed/wiki).
 
-Running the mock
-----------------
+Mock reference
+--------------
 
 ```
 python3 mock_appserver.py 8096
@@ -92,7 +97,8 @@ session context) is the default. The knobs below exist for A/B-testing an altern
 | `GUL_BIND` | `0.0.0.0` | the interface the server listens on |
 | `GUL_DSUR_B_OPS` | `startSession` | which remoting ops answer with the datastore update reply |
 | `GUL_DSUR_HX` | `1` | `1` pushes the entity template alongside the entity; `0` sends the entity alone |
-| `GUL_DSUR_HX_TEMPLATE` | `1` | include the template blob (`GUL_DSUR_HX_EMPTY_TEMPLATE=1` sends it empty) |
+| `GUL_DSUR_HX_TEMPLATE` | `1` | include the template blob with the entity |
+| `GUL_DSUR_HX_EMPTY_TEMPLATE` | `0` | send the template blob with no component definitions |
 | `GUL_HS_MODE` | `resultdsur` | handshake reply shape; `error` returns a `Result.Error` marker |
 | `GUL_USER_POLL_DELAY` | `10` | user-watcher long-poll hold, seconds |
 | `GUL_LOG` | `runtime/mock_appserver.log` | request log path (the log directory is created if missing) |
@@ -127,7 +133,8 @@ Profiles:
             the missing container entry (see the limitation above).
   host      the full working host set: identity, post-match loop, round timer, the
             login/admission byte patches and the match-data patches.
-  host-min  the same byte patches without any cave: no .rdata mapping, no stubs.
+  host-min  the same byte patches without any cave: no .rdata mapping, no stubs, for
+            bisecting which cave causes a problem.
   list      print every site with its virtual address, file offset and purpose.
 
 `--add NAME` and `--drop NAME` override single sites of a profile.
@@ -139,9 +146,7 @@ refuses to overwrite its own input.
 
 The caves live in the zero padding at the end of `.rdata` and `.pdata`, so the patch raises each
 used section's VirtualSize to its SizeOfRawData and sets MEM_EXECUTE. Every profile then recomputes
-the PE optional-header checksum so the binary stays self-consistent. This is hygiene, not a DRM
-gate: the identity check is launcher-based, and the shipped binary's own stored checksum is already
-stale. If you edit bytes yourself:
+the PE optional-header checksum so the binary stays self-consistent. If you edit bytes yourself:
 
   python3 tools/fix_pe_checksum.py Streamline.host.exe
 
@@ -228,10 +233,6 @@ This repository contains only original tools and code: no game files, no decompi
 code, and no assets. The pak patcher applies a byte-level patch to your own copy of the
 game; nothing is redistributed. The server is written from protocol analysis and observed
 client behavior. You need your own legally obtained copy of the game to use any of this.
-
-The identity cave does not defeat a signature check — the client does not perform one. The client
-asks the launcher for a DRM identity; the cave answers that request locally for copies that were
-not started by Steam.
 
 License
 -------
