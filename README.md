@@ -98,6 +98,31 @@ The goal is not to bring Twitch back. It is to drive the same machinery locally 
 
 That work is research plus a new server-side feature; it is not implemented yet.
 
+### Where this is going: a host that is not a player
+
+Today the host is always a player: the match lives inside somebody's client. For a long-lived server
+that is the wrong shape — it ties the world to one person's session and closes when they quit. The
+long-term goal is a host that runs on its own.
+
+The client is not stripped of the idea. It contains a dedicated-server path of its own:
+`sl.appserver.game.DedicatedServerManager` with `getOurURL`, `getIP`, `getEc2Metadata`,
+`sendHostedGameHeartbeat` and `startCheckingOpenParty`, the `NM_DedicatedServer` net mode, and a
+`requires DedicatedServer NetMode` guard on the host admission path. What it does not have is a proven
+way in from a normal launch.
+
+So the plan has two rungs, in order:
+
+1. **Make the shipped build run as a server.** Find whether the engine can be put into dedicated mode
+   from this executable (a launch switch, a config value, or a small patch at the net-mode decision),
+   and what the appserver must answer for that role: a hosted-game heartbeat, an open-party check, the
+   server URL. The local mock can supply those.
+2. **If that road is genuinely closed, build a skeleton host.** Reduce the executable to the parts a
+   server needs — world, game mode, replication, no rendering or local player — and run that. The
+   match rules live in the game mode, so a skeleton still needs the game's own code, but not its
+   front end.
+
+Either rung needs the same thing from the backend, which is why the mock comes first.
+
 Layout
 ------
 
