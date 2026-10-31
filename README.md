@@ -26,10 +26,10 @@ Works:
 Does not work:
 
 
-- Completing a wardrobe selection. With `all-cosmetics-equip` the slot pages open and list their
-  items, and picking one applies the new model, but the client then reports
-  `Entity __singleton__ does not exist in collection` in a handled dialog: the item the UI holds has
-  no entity in the player's container. The client stays up; the equip is not recorded.
+- A clean wardrobe selection. With `all-cosmetics-equip` the slot pages open, picking an item applies
+  it and the choice persists (it follows to HOME and other pages), but the post-apply refresh reports
+  `Entity __singleton__ does not exist in collection` in a handled dialog. The client stays up; the
+  cosmetic is kept.
 - The host has no appserver session, so entity lookups miss. The visible effect is cosmetic.
 
 Design notes, byte patches and open problems: [wiki](https://github.com/Lakeland97/restreamed/wiki).
