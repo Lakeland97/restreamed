@@ -8,7 +8,7 @@ client expects and documents the client patches needed to run it locally.
 Status
 ------
 
-Works:
+### What works
 
 - Login handshake and session context against the local server, through to the HOME menu.
 - A client-hosted listen server on UDP 7777 that waits for a second player.
@@ -22,8 +22,12 @@ Works:
   joins the returned listen host (`Welcomed`; the host logs `Join succeeded`).
 - Practice, challenge and tutorial modes load and run locally. The tutorial is one-shot until
   its played flag is reset.
+- The local backend and patcher: `mock_appserver.py` speaks the client's haxe.remoting dialect and
+  returns the datastore payloads that finish login and seed a session; the patcher verifies every byte
+  it replaces and repairs the PE checksum; an offline suite covers the serializer, entity payloads,
+  mock replies and patcher tables without the game.
 
-Does not work:
+### What does not work
 
 - The stream layer. Streamline's original design paired the client with a web front end and a live
   service that ran chat polls, rule votes, bets, flash sales and gameplay mods. None of that is
@@ -38,30 +42,11 @@ Does not work:
 
 Design notes, byte patches and open problems: [wiki](https://github.com/Lakeland97/restreamed/wiki).
 
-What this project does, what it changes, and where it is going
---------------------------------------------------------------
+### Liberties taken
 
-### Implemented
-
-- **A working local backend.** `mock_appserver.py` speaks the client's haxe.remoting dialect and
-  returns the datastore payloads the client needs to finish login, seed a session, and name each
-  player (`Player1`, `Player2`, ...).
-- **A patcher for your own client.** Byte-verified sites for the launcher identity, the HOME player
-  model, the join loading screen, the cosmetic catalogue and selection, the host admission patches,
-  the post-match loop and the round timer, with a PE checksum repair and a same-length pak URL
-  redirect.
-- **Playable matches.** A client-hosted listen server, a second client joining by native travel,
-  replicated round phases, the full round lifecycle to MatchOver and back to `WaitingForPlayers`, and
-  the server-sent join link that routes a client into a host.
-- **Cosmetics.** Every catalogue item can be browsed; owned items equip with no dialog, unowned ones
-  equip and report the missing container entry.
-- **Offline tests.** The serializer, entity payloads, mock replies and patcher tables are covered by
-  a test suite that runs without the game.
-
-### Liberties we took
-
-- **The host is a player.** The shipped game has no dedicated-server build, so "server" here means a
-  patched client hosting a listen match.
+- **The host is a player.** A stock launch never reaches the client's dedicated-server role, so "server"
+  here means a patched client hosting a listen match. Making a host that is not a player is a goal
+  below, not a shipped feature.
 - **The backend is reconstructed, not recovered.** Request and reply shapes are derived from how the
   client parses them, not from any original server source. Where the client tolerated a plausible
   payload we used it.
@@ -77,7 +62,9 @@ What this project does, what it changes, and where it is going
 - **Onboarding is a setting, not a feature.** Marking the tutorial played is a launch-time settings
   value; nothing on the server models it.
 
-### Where this is going: an orchestrated stream layer
+### Where this is going
+
+#### An orchestrated stream layer
 
 Streamline was built as two halves: the arena client, and a live layer that watched a Twitch channel
 and turned audience actions into gameplay. The client still carries that half — `sl.game.pgs.PGSManager`,
@@ -98,7 +85,7 @@ The goal is not to bring Twitch back. It is to drive the same machinery locally 
 
 That work is research plus a new server-side feature; it is not implemented yet.
 
-### Where this is going: a host that is not a player
+#### A host that is not a player
 
 Today the host is always a player: the match lives inside somebody's client. For a long-lived server
 that is the wrong shape — it ties the world to one person's session and closes when they quit. The
