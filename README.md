@@ -101,6 +101,13 @@ session context) is the default. The knobs below exist for A/B-testing an altern
 | `GUL_DSUR_HX_EMPTY_TEMPLATE` | `0` | send the template blob with no component definitions |
 | `GUL_HS_MODE` | `resultdsur` | handshake reply shape; `error` returns a `Result.Error` marker |
 | `GUL_USER_POLL_DELAY` | `10` | user-watcher long-poll hold, seconds |
+| `GUL_USER_WATCH_HOLD` | the poll delay | explicit hold override for the user watcher |
+| `GUL_USER_WATCH_STAMP` | `advance` | `echo` returns the requested stamp, so no update is delivered |
+| `GUL_NAME_PREFIX` | `Player` | prefix for the auto-assigned display names (`Player1`, `Player2`, …) |
+| `GUL_IID` | auto | pin `playerIID` for every session (single-client tests) |
+| `GUL_NAME` | auto | pin the display name; pair it with `GUL_IID` |
+| `GUL_COOKIES` | `0` | `1` issues the `hns_session` cookie so keyless legs keep the session identity (LAN tests with two clients) |
+| `GUL_PGS_PARTY_ID` | `p1` | party id reported by the PGS party legs |
 | `GUL_LOG` | `runtime/mock_appserver.log` | request log path (the log directory is created if missing) |
 
 Each login gets its own display name (`Player1`, `Player2`, ...), so two clients show distinct names.
