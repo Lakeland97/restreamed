@@ -356,7 +356,13 @@ def handshake_context():
 def pgs_party():
     ident = current_identity()
     party_id = os.environ.get("GUL_PGS_PARTY_ID", "p1")
-    party = {"id": party_id, "owner": ident["iid"], "partyMax": 4, "users": [],
+    # GUL_PGS_PARTY_OWNER_RECORD=1 sends the owner as a member record instead of a bare iid; the
+    # host panel path is the suspect consumer (party parser reads owner/partyMax/activePartyID).
+    owner = ident["iid"]
+    if os.environ.get("GUL_PGS_PARTY_OWNER_RECORD") == "1":
+        owner = {"id": ident["iid"], "playerIID": ident["iid"], "accountID": ident["accountID"],
+                 "displayName": ident["name"], "provider": "twitch"}
+    party = {"id": party_id, "owner": owner, "partyMax": 4, "users": [],
              "activePartyID": party_id, "invite_only": False}
     if _PGS_ACCOUNTS:
         account = _account_record(ident)
