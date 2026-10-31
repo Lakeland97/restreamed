@@ -557,5 +557,29 @@ class CliTest(unittest.TestCase):
             self._run(["--profile", "nope", "--in", "x", "--out", "y"])
 
 
+class ProfileInvariantTest(unittest.TestCase):
+    """A cave that synthesizes player identity only survives if the session load cannot overwrite it.
+
+    The identity cave writes `LoggedInPlayer.playerIID` from the URL/name, then the login flow's
+    `loadPlayerFromAppServer` would write the process-global session id into the same field and collapse
+    every contestant onto one key. `activate_server_ret` makes that load return at entry, which is why
+    the two must travel together (see the wiki's PatchIndex, identity rows).
+    """
+
+    def test_identity_cave_requires_the_login_return(self):
+        for name, profile in pc.PROFILES.items():
+            sites = {s.name for s in profile.sites}
+            with self.subTest(profile=name):
+                if "identity_cave" in sites:
+                    self.assertIn("activate_server_ret", sites,
+                                  "%s has the identity cave without the login return" % name)
+
+    def test_minimal_host_profile_keeps_the_byte_patches_only(self):
+        # host-min is "the same byte patches without any cave": the login return stays, the cave does not.
+        sites = {s.name for s in pc.PROFILES["host-min"].sites}
+        self.assertNotIn("identity_cave", sites)
+        self.assertIn("activate_server_ret", sites)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
