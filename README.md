@@ -111,6 +111,8 @@ session context) is the default. The knobs below exist for A/B-testing an altern
 | `GUL_LOG` | `runtime/mock_appserver.log` | request log path (the log directory is created if missing) |
 
 Each login gets its own display name (`Player1`, `Player2`, ...), so two clients show distinct names.
+The module docstring of `mock_appserver.py` lists every knob, including the reply-shape experiments used
+while reverse-engineering; the table above is the set a normal run needs.
 
 Patching your client
 --------------------
