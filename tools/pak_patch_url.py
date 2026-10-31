@@ -15,6 +15,7 @@ Fully reversible: run again with the arguments swapped.
 """
 import hashlib
 import struct
+import os
 import sys
 
 MAGIC = 0x5A6F12E1
@@ -57,6 +58,9 @@ def main():
         print(__doc__)
         sys.exit(2)
 
+    if not os.path.isfile(pak):
+        print(f"error: pak not found: {pak}", file=sys.stderr)
+        sys.exit(1)
     with open(pak, "r+b") as f:
         f.seek(0, 2)
         eof = f.tell()

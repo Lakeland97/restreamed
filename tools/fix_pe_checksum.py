@@ -51,8 +51,16 @@ def compute_checksum(data) -> int:
     return (total + size) & 0xFFFFFFFF
 
 
+def _read(path: str) -> bytearray:
+    try:
+        with open(path, "rb") as f:
+            return bytearray(f.read())
+    except OSError as exc:
+        raise SystemExit("error: %s" % exc)
+
+
 def fix(path: str) -> int:
-    data = bytearray(open(path, "rb").read())
+    data = _read(path)
     csum_off = checksum_offset(data)
     old = struct.unpack_from("<I", data, csum_off)[0]
     total = compute_checksum(data)
@@ -64,7 +72,7 @@ def fix(path: str) -> int:
 
 def check(path: str) -> int:
     """Report stored vs computed without writing (the shipped exe is NOT self-consistent)."""
-    data = bytearray(open(path, "rb").read())
+    data = _read(path)
     stored = struct.unpack_from("<I", data, checksum_offset(data))[0]
     computed = compute_checksum(data)
     print("stored    %#010x" % stored)
