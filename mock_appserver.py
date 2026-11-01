@@ -991,12 +991,19 @@ def server_ip_reply():
     Default is SIHostNotConnected (index 2, no payload): it satisfies the cast and never
     travels. GUL_SERVER_IP switches to SIServer with the configured endpoint, using the same
     field names the client's reader uses (host, port, party, playerSession, gameSession).
+
+    Envelope (corrected): the enum goes in the DataStoreUpdateResponse's returnVal, not straight
+    into Result.Success. getServerIp is a public-plane op, so its reply passes the
+    DataStoreClient gate FUN_1411f7750 first (dyn-cast to DataStoreUpdateResponse at
+    0x1411f77c9, returnVal re-wrapped as Result.Success at 0x1411f7a91..0x1411f7aa1). A bare
+    Result.Success(<ServerIpResponse>) fails that cast and AVs at 0x1411f781e — the same fault
+    class that made a bare Success(UrlAction) unreachable for processUrl.
     """
     host = os.environ.get("GUL_SERVER_IP", "")
     if not host:
-        return haxe_ser.result_success(
+        return haxe_ser.handshake_result_dsur(
             HxEnum("appserver.api.ServerIpResponse", 2, args=[]))
-    return haxe_ser.result_success(
+    return haxe_ser.handshake_result_dsur(
         HxEnum("appserver.api.ServerIpResponse", 0, args=[{
             "host": host,
             "port": int(os.environ.get("GUL_GAME_PORT", "7777")),
@@ -1038,7 +1045,13 @@ OP_REPLIES = {
     "startSession": lambda: _dsur(session_context()),
     "clientHeartbeat": lambda: _dsur({"interval_sec": 60}),
     "getConfig": lambda: _dsur(session_context() if "getConfig" in OP_CTX_OPS() else None),
-    "getOpenServer": lambda: haxe_ser.result_success(
+    # Public-plane op: the reply MUST be a branch-A DataStoreUpdateResponse whose returnVal is
+    # the OpenServerResponse enum. The public client is a CookieClient (base ctor 0x1411f6a70
+    # writes the DataStoreClient vtable), so every Result.Success on /remoting passes the
+    # DataStoreClient gate FUN_1411f7750: it dyn-casts the payload to DataStoreUpdateResponse
+    # (0x1411f77c9) and re-wraps returnVal as Result.Success for the op callback. A bare enum
+    # payload fails that cast and AVs at 0x1411f781e before FUN_14066cd70 runs.
+    "getOpenServer": lambda: haxe_ser.handshake_result_dsur(
         HxEnum("appserver.api.OpenServerResponse", 0, args=[{
             "host": os.environ.get("GUL_GAME_HOST", "127.0.0.1"),
             "port": int(os.environ.get("GUL_GAME_PORT", "7777")),
@@ -1058,7 +1071,7 @@ OP_REPLIES = {
     }),
     "hostedServerHeartbeat": lambda: haxe_ser.result_success({}),
     "onEndMatch": lambda: haxe_ser.result_success({}),
-    "giveEndOfMatchRewards": lambda: haxe_ser.result_success({}),
+    "giveEndOfMatchRewards": lambda: haxe_ser.handshake_result_dsur({}),
     "hostHasJoined": lambda: haxe_ser.result_success({}),
     "getServerIp": server_ip_reply,
 }
