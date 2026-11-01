@@ -292,8 +292,34 @@ _DEFAULT_IDENTITY = _override_identity() if (_IID_OVERRIDE or _NAME_OVERRIDE) el
     "jwt": _identity_jwt("devuser"), "cookie": "dev1"}
 
 
+_PARTY_SEEN = {}
+
+
+def _note_party_member(ident):
+    """Remember identities as they are seen, so one party can list every live client."""
+    with _identity_lock:
+        _PARTY_SEEN[ident["iid"]] = (ident, time.time())
+
+
+def party_members(window=None):
+    """Identities seen inside the party window, newest first, current identity included."""
+    if window is None:
+        window = int(os.environ.get("GUL_PGS_PARTY_WINDOW", "300"))
+    cutoff = time.time() - window
+    with _identity_lock:
+        live = [(at, ident) for ident, at in
+                ((ident, at) for ident, at in _PARTY_SEEN.values()) if at >= cutoff]
+    live.sort(key=lambda item: item[0], reverse=True)
+    members = [ident for _, ident in live]
+    current = current_identity()
+    if all(m["iid"] != current["iid"] for m in members):
+        members.insert(0, current)
+    return members
+
+
 def current_identity():
     if CURRENT_IDENTITY is not None:
+        _note_party_member(CURRENT_IDENTITY)
         return CURRENT_IDENTITY
     if _IID_OVERRIDE or _NAME_OVERRIDE:
         return _override_identity()
@@ -367,6 +393,25 @@ def handshake_context():
     return merged
 
 
+def pgs_party():
+    ident = current_identity()
+    party_id = os.environ.get("GUL_PGS_PARTY_ID", "p1")
+    owner = ident["iid"]
+    if os.environ.get("GUL_PGS_PARTY_OWNER_RECORD") == "1":
+        owner = {"id": ident["iid"], "playerIID": ident["iid"], "accountID": ident["accountID"],
+                 "displayName": ident["name"], "provider": "twitch"}
+    party = {"id": party_id, "owner": owner, "partyMax": 4, "users": [],
+             "activePartyID": party_id, "invite_only": False}
+    if _PGS_ACCOUNTS:
+        members = party_members()
+        party["accounts"] = [_account_record(m) for m in members]
+        party["m_accounts"] = [dict(a) for a in party["accounts"]]
+        party["users"] = [{"id": m["iid"], "playerIID": m["iid"],
+                           "accountID": m["accountID"],
+                           "displayName": m["name"], "provider": "twitch"} for m in members]
+    return party
+
+
 _STREAMS = {}
 
 
@@ -406,25 +451,6 @@ def _stream_for(channel):
             audience=int(os.environ.get("GUL_STREAM_AUDIENCE", "14")),
         )
     return _STREAMS[channel]
-
-
-def pgs_party():
-    ident = current_identity()
-    party_id = os.environ.get("GUL_PGS_PARTY_ID", "p1")
-    owner = ident["iid"]
-    if os.environ.get("GUL_PGS_PARTY_OWNER_RECORD") == "1":
-        owner = {"id": ident["iid"], "playerIID": ident["iid"], "accountID": ident["accountID"],
-                 "displayName": ident["name"], "provider": "twitch"}
-    party = {"id": party_id, "owner": owner, "partyMax": 4, "users": [],
-             "activePartyID": party_id, "invite_only": False}
-    if _PGS_ACCOUNTS:
-        account = _account_record(ident)
-        party["accounts"] = [account]
-        party["m_accounts"] = [dict(account)]
-        party["users"] = [{"id": ident["iid"], "playerIID": ident["iid"],
-                           "accountID": ident["accountID"],
-                           "displayName": ident["name"], "provider": "twitch"}]
-    return party
 
 
 def _cookie_token():
@@ -1354,11 +1380,14 @@ class Handler(BaseHTTPRequestHandler):
             return
         if re.search(r"/channels/[^/]+/poll", p):
             channel = p.split("/channels/")[1].split("/")[0]
-            state = _stream_for(channel).state(time.time())
+            stream = _stream_for(channel)
+            state = stream.state(time.time())
+            slog("    (channel poll -> %s votes=%s)" % (state.get("poll_id"), state.get("votes")))
             self._reply(json.dumps(state).encode(), ctype="application/json")
             return
         if p.rstrip("/").endswith("/vote"):
-            stream = _stream_for(_stream_channel_key())
+            channel = _stream_channel_key()
+            stream = _stream_for(channel)
             option = ""
             try:
                 body = json.loads(raw.decode("utf-8") or "{}")
@@ -1370,6 +1399,22 @@ class Handler(BaseHTTPRequestHandler):
             self._reply(json.dumps({"accepted": ok}).encode(), ctype="application/json")
             return
         if p.rstrip("/").endswith("/channels"):
+            if os.environ.get("GUL_STREAM") == "1":
+                channel = _stream_channel_key()
+                _stream_for(channel)
+                slog(f"    (channels -> live channel {channel})")
+                viewers = int(os.environ.get("GUL_STREAM_VIEWERS", "42"))
+                self._reply(json.dumps({"live_channels": [{
+                    "id": channel, "channel_id": channel, "name": channel,
+                    "title": "Streamline", "game": "Streamline",
+                    "displayName": channel, "providerString": "twitch",
+                    "viewer_count": viewers, "viewers": viewers, "count": viewers,
+                    "is_live": True, "live": True,
+                    "url": "https://www.twitch.tv/%s" % channel,
+                    "thumbnail": "", "preview": "",
+                }], "channels": [{"id": channel, "name": channel, "live": True}]}).encode(),
+                        ctype="application/json")
+                return
             # TopLiveGamesWidget.updateFromPGS: empty live_channels is safe.
             slog("    (channels -> empty live_channels)")
             self._reply(json.dumps({"live_channels": []}).encode(), ctype="application/json")

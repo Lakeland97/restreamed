@@ -154,6 +154,17 @@ class SessionIdentityTest(unittest.TestCase):
                              (context["displayName"], context["playerIID"]))
         self.assertNotEqual(first["playerIID"], second["playerIID"])
 
+    def test_party_lists_both_live_clients(self):
+        server = self._server({"GUL_COOKIES": "1", "GUL_PGS_ACCOUNTS": "1"})
+        first, first_headers = self._login(server, "P" * 32)
+        second, second_headers = self._login(server, "Q" * 32)
+        for headers in (first_headers, second_headers):
+            body, _ = _get(server, "/parties", {"Cookie": self._cookie(headers)})
+            party = json.loads(body.decode("utf-8"))
+            names = sorted(user["displayName"] for user in party["users"])
+            self.assertEqual(names, sorted([first["displayName"], second["displayName"]]))
+            self.assertEqual(len(party["accounts"]), 2)
+
     def test_explicit_override_pins_one_identity(self):
         server = self._server({"GUL_IID": "alice", "GUL_NAME": "Alice"})
         first, _ = self._login(server, "F" * 32)
