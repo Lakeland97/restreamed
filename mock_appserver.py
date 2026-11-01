@@ -978,6 +978,34 @@ def process_url_join_reply():
     return haxe_ser.handshake_result_dsur(action)
 
 
+def server_ip_reply():
+    """Reply for getServerIp: Result.Success(appserver.api.ServerIpResponse.…).
+
+    The party/host branch (startEnterGame -> getServerIp -> FUN_1406730d0) dyn-casts the
+    Result payload straight to ServerIpResponse and switches on its constructor index; a
+    DataStoreUpdateResponse (the old reply) cannot be cast to it, so the flow ended in
+    `LoginGameMode error`. Constructor table 0x143b0b680 / factory 0x140e71e90:
+    SIServer = 0 (arity 1, payload object), SIHostConnected = 1, SIHostNotConnected = 2,
+    SINoFreeServers = 3 (arity 0).
+
+    Default is SIHostNotConnected (index 2, no payload): it satisfies the cast and never
+    travels. GUL_SERVER_IP switches to SIServer with the configured endpoint, using the same
+    field names the client's reader uses (host, port, party, playerSession, gameSession).
+    """
+    host = os.environ.get("GUL_SERVER_IP", "")
+    if not host:
+        return haxe_ser.result_success(
+            HxEnum("appserver.api.ServerIpResponse", 2, args=[]))
+    return haxe_ser.result_success(
+        HxEnum("appserver.api.ServerIpResponse", 0, args=[{
+            "host": host,
+            "port": int(os.environ.get("GUL_GAME_PORT", "7777")),
+            "party": os.environ.get("GUL_JOIN_PARTY", ""),
+            "playerSession": os.environ.get("GUL_JOIN_SESSION", ""),
+            "gameSession": os.environ.get("GUL_JOIN_GAMESESSION", ""),
+        }]))
+
+
 OP_REPLIES = {
     # Round 5: every XIAppServerPublic RPC result is wrapped in DataStoreUpdateResponse
     # (branch A: empty updatedEntities → returnVal passthrough).
@@ -1032,7 +1060,7 @@ OP_REPLIES = {
     "onEndMatch": lambda: haxe_ser.result_success({}),
     "giveEndOfMatchRewards": lambda: haxe_ser.result_success({}),
     "hostHasJoined": lambda: haxe_ser.result_success({}),
-    "getServerIp": lambda: _dsur(session_context() if "getServerIp" in OP_CTX_OPS() else None),
+    "getServerIp": server_ip_reply,
 }
 
 
