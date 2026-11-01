@@ -36,6 +36,25 @@ GROUP_TAG = [
     "game_mod_puke_town", "game_mod_ragdoll", "game_mod_big_head_mode",
 ]
 
+# Bingo group per mod, from ModComponent.templateData. The four groups read as four slots; that a
+# card holds at most one mod per slot is an inference from an array field and four group ids, not an
+# observed rule, so callers may widen it.
+BINGO_GROUP = {
+    "game_mod_big_head_mode": 3, "game_mod_bonus_bonus": 2, "game_mod_concrete_shoes": 4,
+    "game_mod_crabcore": 1, "game_mod_energy_drink": 2, "game_mod_floor_is_lava": 1,
+    "game_mod_make_it_rain": 3, "game_mod_moon_boots": 2, "game_mod_multi_ball": 1,
+    "game_mod_nerfed": 2, "game_mod_no_touching": 3, "game_mod_perpetual_motion": 4,
+    "game_mod_pleb": 1, "game_mod_pogo": 2, "game_mod_points_b_gone": 1,
+    "game_mod_puke_town": 2, "game_mod_ragdoll": 1, "game_mod_rise_from_your_graves": 2,
+    "game_mod_sandstorm": 4, "game_mod_shady_business": 3, "game_mod_shrink_ray": 3,
+    "game_mod_slo_thuggin": 4, "game_mod_spiritual_cleansing": 4, "game_mod_stop_drop_roll": 4,
+    "game_mod_ugh_ice_level": 3, "game_mod_vengeful_spirits": 3, "game_mod_wolf_among_us": 1,
+    "game_mod_xray_glasses": 2, "game_mod_yakety_hill": 3,
+}
+
+BINGO_SLOTS = (1, 2, 3, 4)
+
+
 
 class Poll:
     """One vote over candidate mods, with an audience that votes over the window."""
@@ -132,3 +151,79 @@ class StreamSession:
         poll._votes.append((now, option))
         poll._votes.sort()
         return True
+
+
+class Rotation:
+    """Timer-driven mod rotation with no vote: the algorithmic audience fills each bingo slot.
+
+    One mod per slot, timed by the template's own `duration`, chosen by `weight`, never the mod that
+    just left that slot, and never a mod already sitting in another slot. Slots fill lazily, so the
+    rotation needs no background timer: ask it for the state at any `now` and it catches up in
+    chronological order, which keeps a jumped clock identical to a stepped one.
+    """
+
+    def __init__(self, seed=None, pool=None, slots=BINGO_SLOTS, max_steps=10000):
+        self.rng = random.Random(seed)
+        self.pool = [m for m in (GROUP_TAG if pool is None else pool) if m in BINGO_GROUP]
+        self.slots = {g: None for g in slots}  # g -> (mod, started_at, ends_at)
+        self.max_steps = max_steps
+
+    def _busy(self, slot, at):
+        return {s[0] for g, s in self.slots.items()
+                if g != slot and s is not None and s[2] > at}
+
+    def _pick(self, slot, exclude, at):
+        busy = self._busy(slot, at)
+        candidates = [m for m in self.pool
+                      if BINGO_GROUP[m] == slot and m != exclude and m not in busy]
+        if not candidates:
+            return None
+        return self.rng.choices(candidates, weights=[CATALOGUE[m][1] for m in candidates])[0]
+
+    def _start(self, slot, mod, at):
+        self.slots[slot] = (mod, at, at + CATALOGUE[mod][0])
+
+    def _advance(self, now):
+        for slot in self.slots:
+            if self.slots[slot] is None:
+                mod = self._pick(slot, None, now)
+                if mod is not None:
+                    self._start(slot, mod, now)
+        for _ in range(self.max_steps):
+            due = [(s[2], slot) for slot, s in self.slots.items() if s is not None and s[2] <= now]
+            if not due:
+                return
+            end, slot = min(due)
+            previous = self.slots[slot][0]
+            mod = self._pick(slot, previous, end)
+            if mod is None:              # nothing legal left in this slot
+                self.slots[slot] = None
+            else:
+                self._start(slot, mod, end)
+        # A gap wider than max_steps * shortest duration re-rolls the card rather than stalling.
+        for slot in self.slots:
+            if self.slots[slot] is not None and self.slots[slot][2] <= now:
+                mod = self._pick(slot, None, now)
+                self.slots[slot] = None if mod is None else (mod, now, now + CATALOGUE[mod][0])
+
+    def state(self, now):
+        self._advance(now)
+        active = []
+        for slot, entry in self.slots.items():
+            if entry is None:
+                continue
+            mod, started_at, ends_at = entry
+            active.append({
+                "mod": mod,
+                "slot": slot,
+                "started_at": started_at,
+                "ends_at": ends_at,
+                "remaining": max(0, int(ends_at - now)),
+                "duration": CATALOGUE[mod][0],
+            })
+        active.sort(key=lambda a: a["slot"])
+        return {"source": "rotation", "slots": active}
+
+    def mods(self, now):
+        return [a["mod"] for a in self.state(now)["slots"]]
+

@@ -56,5 +56,72 @@ class PollTest(unittest.TestCase):
         self.assertEqual(a.state(3)["votes"], b.state(3)["votes"])
 
 
+class RotationTest(unittest.TestCase):
+    def test_every_catalogued_mod_has_a_bingo_slot(self):
+        self.assertEqual(len(se.BINGO_GROUP), 29)
+        self.assertEqual(set(se.BINGO_GROUP), set(se.CATALOGUE))
+        self.assertEqual(set(se.BINGO_GROUP.values()), set(se.BINGO_SLOTS))
+        for mod in se.GROUP_TAG:
+            self.assertIn(mod, se.BINGO_GROUP)
+
+    def test_one_mod_per_slot_from_its_own_group(self):
+        rot = se.Rotation(seed=3)
+        for now in range(0, 1200, 7):
+            slots = rot.state(now)["slots"]
+            self.assertEqual(len({s["slot"] for s in slots}), len(slots))
+            for s in slots:
+                self.assertEqual(se.BINGO_GROUP[s["mod"]], s["slot"])
+                self.assertIn(s["mod"], se.GROUP_TAG)
+                self.assertGreaterEqual(s["remaining"], 0)
+
+    def test_a_slot_hands_over_without_a_gap_or_a_repeat(self):
+        rot = se.Rotation(seed=4)
+        previous = {}
+        for now in range(0, 1800):
+            for s in rot.state(now)["slots"]:
+                old = previous.get(s["slot"])
+                if old is not None and old["mod"] != s["mod"]:
+                    self.assertEqual(s["started_at"], old["ends_at"])
+                    self.assertNotEqual(s["mod"], old["mod"])
+                previous[s["slot"]] = s
+            self.assertLessEqual(len(rot.mods(now)), 4)
+
+    def test_a_jumped_clock_matches_a_stepped_one(self):
+        stepped = se.Rotation(seed=5)
+        jumped = se.Rotation(seed=5)
+        stepped.state(0)
+        jumped.state(0)
+        for now in range(1, 901):
+            stepped.state(now)
+        self.assertEqual(stepped.mods(900), jumped.mods(900))
+        self.assertEqual(stepped.state(900)["slots"], jumped.state(900)["slots"])
+
+    def test_same_seed_same_rotation(self):
+        a = se.Rotation(seed=9, pool=se.GROUP_TAG[:12])
+        b = se.Rotation(seed=9, pool=se.GROUP_TAG[:12])
+        self.assertEqual([a.mods(t) for t in (0, 60, 300)], [b.mods(t) for t in (0, 60, 300)])
+
+    def test_weighted_draw_favours_heavy_mods(self):
+        rot = se.Rotation(seed=13)
+        counts = {}
+        for _ in range(2000):
+            mod = rot._pick(2, None, 0)
+            counts[mod] = counts.get(mod, 0) + 1
+        # Group 2 weights: energy_drink 4, moon_boots 4, pogo 3, xray_glasses 3, bonus_bonus 2, puke_town 1.
+        heavy = counts.get("game_mod_energy_drink", 0) + counts.get("game_mod_moon_boots", 0)
+        self.assertGreater(heavy, counts.get("game_mod_puke_town", 0) * 3)
+
+    def test_empty_pool_yields_no_slots(self):
+        rot = se.Rotation(seed=1, pool=[])
+        self.assertEqual(rot.state(0)["slots"], [])
+        self.assertEqual(rot.mods(999), [])
+
+    def test_a_slot_without_a_legal_successor_reports_empty_then_reseeds(self):
+        rot = se.Rotation(seed=1, pool=["game_mod_puke_town"])   # the only group-2 member offered
+        self.assertEqual([s["mod"] for s in rot.state(0)["slots"]], ["game_mod_puke_town"])
+        self.assertEqual(rot.state(20)["slots"], [])              # 15 s over, no successor allowed
+        self.assertEqual([s["mod"] for s in rot.state(21)["slots"]], ["game_mod_puke_town"])
+
+
 if __name__ == "__main__":
     unittest.main()

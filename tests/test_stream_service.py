@@ -79,6 +79,17 @@ class StreamServiceTest(unittest.TestCase):
         bad = _post(self.base + "/vote/", json.dumps({"option": "game_mod_nope"}).encode())
         self.assertFalse(bad["accepted"])
 
+    def test_mod_rotation_over_http(self):
+        state = _get(self.base + "/channels/devuser/mods")
+        self.assertEqual(state["source"], "rotation")
+        slots = state["slots"]
+        self.assertTrue(slots)
+        self.assertEqual(len({s["slot"] for s in slots}), len(slots))
+        for s in slots:
+            self.assertGreater(s["remaining"], 0)
+        again = _get(self.base + "/channels/devuser/mods")
+        self.assertEqual([s["mod"] for s in again["slots"]], [s["mod"] for s in slots])
+
 
 if __name__ == "__main__":
     unittest.main()

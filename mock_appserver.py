@@ -374,6 +374,17 @@ def _stream_channel_key():
     return os.environ.get("GUL_STREAM_CHANNEL") or current_identity()["iid"]
 
 
+_ROTATIONS = {}
+
+
+def _rotation_for(channel):
+    if channel not in _ROTATIONS:
+        import stream_engine
+        _ROTATIONS[channel] = stream_engine.Rotation(
+            seed=int(os.environ.get("GUL_ROTATION_SEED", "1")))
+    return _ROTATIONS[channel]
+
+
 def _stream_for(channel):
     if channel not in _STREAMS:
         import stream_engine
@@ -1317,6 +1328,12 @@ class Handler(BaseHTTPRequestHandler):
             slog(f"    (polls/create -> {poll.id} on {channel}: {', '.join(poll.options)})")
             self._reply(json.dumps({"poll_id": poll.id, "channel": channel, "options": poll.options}).encode(),
                         ctype="application/json")
+            return
+        if re.search(r"/channels/[^/]+/mods", p):
+            channel = p.split("/channels/")[1].split("/")[0]
+            state = _rotation_for(channel).state(time.time())
+            slog("    (channel mods -> %s)" % ", ".join(s["mod"] for s in state["slots"]))
+            self._reply(json.dumps(state).encode(), ctype="application/json")
             return
         if re.search(r"/channels/[^/]+/poll", p):
             channel = p.split("/channels/")[1].split("/")[0]
