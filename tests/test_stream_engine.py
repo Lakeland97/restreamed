@@ -16,6 +16,15 @@ class CatalogueTest(unittest.TestCase):
         self.assertEqual(len(se.CATALOGUE), 29)
         self.assertEqual(len(se.GROUP_TAG), 22)
 
+    def test_tag_group_is_the_catalogue_minus_seven(self):
+        # Tag is the default group minus six; the default group is the catalogue minus stop_drop_roll.
+        # Pinned so the exclusions documented beside the catalogue cannot drift from the served pool.
+        self.assertEqual(sorted(set(se.CATALOGUE) - set(se.GROUP_TAG)),
+                         ["game_mod_nerfed", "game_mod_points_b_gone",
+                          "game_mod_rise_from_your_graves", "game_mod_shady_business",
+                          "game_mod_spiritual_cleansing", "game_mod_stop_drop_roll",
+                          "game_mod_vengeful_spirits"])
+
 
 class PollTest(unittest.TestCase):
     def test_options_are_distinct_and_from_the_group(self):
