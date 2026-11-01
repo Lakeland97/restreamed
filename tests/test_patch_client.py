@@ -611,11 +611,11 @@ class DetectTest(CliTest):
         self.assertEqual(code, 0, text)
         self.assertIn("client", text)
 
-    def test_superset_build_reports_both(self):
-        code, text = self._run(["--detect", self._patched("listen-url")])
+    def test_superset_build_reports_the_chain(self):
+        code, text = self._run(["--detect", self._patched("play")])
         self.assertEqual(code, 0, text)
-        self.assertIn("host-min", text)
-        self.assertIn("listen-url", text)
+        self.assertIn("home-model", text)
+        self.assertIn("play", text)
 
 
 if __name__ == "__main__":

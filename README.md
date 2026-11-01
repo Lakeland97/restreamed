@@ -144,9 +144,6 @@ Profiles:
             login/admission byte patches and the match-data patches.
   host-min  the same byte patches without any cave: no .rdata mapping, no stubs, for
             bisecting which cave causes a problem.
-  listen-url  host-min plus a URL edit so the map picker's confirm asks for a listen
-            world instead of joining one. Bytes verified against the retail image,
-            not run end to end: treat it as an experiment, not a supported route.
   list      print every site with its virtual address, file offset and purpose.
 
 `--add NAME` and `--drop NAME` override single sites of a profile.
