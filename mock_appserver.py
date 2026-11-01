@@ -367,6 +367,25 @@ def handshake_context():
     return merged
 
 
+_STREAMS = {}
+
+
+def _stream_channel_key():
+    return os.environ.get("GUL_STREAM_CHANNEL") or current_identity()["iid"]
+
+
+def _stream_for(channel):
+    if channel not in _STREAMS:
+        import stream_engine
+        _STREAMS[channel] = stream_engine.StreamSession(
+            channel,
+            seed=int(os.environ.get("GUL_STREAM_SEED", "1")),
+            window=int(os.environ.get("GUL_STREAM_WINDOW", "25")),
+            audience=int(os.environ.get("GUL_STREAM_AUDIENCE", "14")),
+        )
+    return _STREAMS[channel]
+
+
 def pgs_party():
     ident = current_identity()
     party_id = os.environ.get("GUL_PGS_PARTY_ID", "p1")
@@ -1290,6 +1309,31 @@ class Handler(BaseHTTPRequestHandler):
                 user["roles"] = list(_PGS_ROLES)
             slog(f"    (user watcher {p} -> users[{iid}] stamp={next_stamp})")
             self._reply(json.dumps({"users": [user]}).encode(), ctype="application/json")
+            return
+        if "/polls/create" in p:
+            channel = _stream_channel_key()
+            stream = _stream_for(channel)
+            poll = stream.start_poll(time.time())
+            slog(f"    (polls/create -> {poll.id} on {channel}: {', '.join(poll.options)})")
+            self._reply(json.dumps({"poll_id": poll.id, "channel": channel, "options": poll.options}).encode(),
+                        ctype="application/json")
+            return
+        if re.search(r"/channels/[^/]+/poll", p):
+            channel = p.split("/channels/")[1].split("/")[0]
+            state = _stream_for(channel).state(time.time())
+            self._reply(json.dumps(state).encode(), ctype="application/json")
+            return
+        if p.rstrip("/").endswith("/vote"):
+            stream = _stream_for(_stream_channel_key())
+            option = ""
+            try:
+                body = json.loads(raw.decode("utf-8") or "{}")
+                option = body.get("option") or body.get("choice") or body.get("vote") or ""
+            except Exception:
+                pass
+            ok = stream.submit(option, time.time()) if option else False
+            slog(f"    (vote {option!r} -> {ok})")
+            self._reply(json.dumps({"accepted": ok}).encode(), ctype="application/json")
             return
         if p.rstrip("/").endswith("/channels"):
             # TopLiveGamesWidget.updateFromPGS: empty live_channels is safe.
