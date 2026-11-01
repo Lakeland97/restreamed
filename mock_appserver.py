@@ -374,6 +374,17 @@ def _stream_channel_key():
     return os.environ.get("GUL_STREAM_CHANNEL") or current_identity()["iid"]
 
 
+def _stream_profile():
+    import stream_engine
+    return stream_engine.profile(
+        mode=os.environ.get("GUL_STREAM_MODE", "tag"),
+        window=int(os.environ.get("GUL_STREAM_WINDOW", "25")),
+        audience=int(os.environ.get("GUL_STREAM_AUDIENCE", "14")),
+        seed=int(os.environ.get("GUL_STREAM_SEED", "1")),
+        rotation_seed=int(os.environ.get("GUL_ROTATION_SEED", "1")),
+    )
+
+
 _ROTATIONS = {}
 
 
@@ -1328,6 +1339,12 @@ class Handler(BaseHTTPRequestHandler):
             slog(f"    (polls/create -> {poll.id} on {channel}: {', '.join(poll.options)})")
             self._reply(json.dumps({"poll_id": poll.id, "channel": channel, "options": poll.options}).encode(),
                         ctype="application/json")
+            return
+        if p.rstrip("/").endswith("/stream/profile"):
+            body = _stream_profile()
+            slog("    (stream profile -> mode=%s pool=%d window=%ds)"
+                 % (body["mode"], body["pool_size"], body["window"]))
+            self._reply(json.dumps(body).encode(), ctype="application/json")
             return
         if re.search(r"/channels/[^/]+/mods", p):
             channel = p.split("/channels/")[1].split("/")[0]

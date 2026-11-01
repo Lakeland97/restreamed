@@ -123,5 +123,33 @@ class RotationTest(unittest.TestCase):
         self.assertEqual([s["mod"] for s in rot.state(21)["slots"]], ["game_mod_puke_town"])
 
 
+class ProfileTest(unittest.TestCase):
+    def test_profile_describes_the_pool_it_serves(self):
+        prof = se.profile()
+        self.assertEqual(prof["mode"], "tag")
+        self.assertEqual(prof["pool_size"], len(se.GROUP_TAG))
+        self.assertEqual(len(prof["mods"]), prof["pool_size"])
+        for m in prof["mods"]:
+            self.assertEqual(m["duration"], se.CATALOGUE[m["mod"]][0])
+            self.assertEqual(m["weight"], se.CATALOGUE[m["mod"]][1])
+            self.assertEqual(m["slot"], se.BINGO_GROUP[m["mod"]])
+        self.assertEqual(prof["rules"]["duration_seconds"], {"min": 15, "max": 60})
+        self.assertEqual(prof["rules"]["weight_range"], {"min": 1, "max": 4})
+        self.assertFalse(prof["rules"]["rotation_uses_votes"])
+        self.assertEqual(prof["slots"], [1, 2, 3, 4])
+
+    def test_profile_reflects_the_knobs_the_service_uses(self):
+        prof = se.profile(window=40, audience=3, seed=7, rotation_seed=8, options=4)
+        self.assertEqual((prof["window"], prof["audience"], prof["seed"], prof["rotation_seed"]),
+                         (40, 3, 7, 8))
+        self.assertEqual(prof["rules"]["vote_window_seconds"], 40)
+        self.assertEqual(prof["rules"]["poll_options"], 4)
+
+    def test_an_undecoded_mode_is_rejected_by_name(self):
+        with self.assertRaises(KeyError) as caught:
+            se.profile(mode="bitball")
+        self.assertIn("tag", str(caught.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

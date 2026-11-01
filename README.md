@@ -229,10 +229,13 @@ a host you control and is fully reversible.
 Roadmap
 -------
 
-Two projects are queued: an orchestrated replacement for the stream layer (in-game voting plus a
-simulated audience driving the game's own mod system), and a host that is not a player. The first is
-described in [StreamLayer](https://github.com/Lakeland97/restreamed/wiki/StreamLayer); both are sequenced
-in the [roadmap](https://github.com/Lakeland97/restreamed/wiki/Roadmap).
+Two projects follow: a replacement for the stream layer (in-game voting plus a simulated audience
+driving the game's own mod system), and a host that is not a player. The server half of the stream layer
+exists: polls, a simulated audience, and a vote-free rotation drawn from the game's own mod catalogue,
+served behind `GUL_STREAM`, with the current profile readable at `GET stream/profile`. Applying a chosen
+mod to a live match is the step still open. Both are described in
+[StreamLayer](https://github.com/Lakeland97/restreamed/wiki/StreamLayer) and sequenced in the
+[roadmap](https://github.com/Lakeland97/restreamed/wiki/Roadmap).
 
 Contributing
 ------------

@@ -54,6 +54,53 @@ BINGO_GROUP = {
 
 BINGO_SLOTS = (1, 2, 3, 4)
 
+# The only mode allow-list decoded so far (`ModGroupComponent.mods` for Tag). The default and bitball
+# lists exist in the templates but have not been transcribed, so they are not offered here.
+POOLS = {"tag": GROUP_TAG}
+
+
+def pool_for(mode):
+    try:
+        return list(POOLS[mode])
+    except KeyError:
+        raise KeyError("unknown mode %r; decoded modes: %s" % (mode, ", ".join(sorted(POOLS))))
+
+
+def profile(mode="tag", window=25, audience=14, seed=1, rotation_seed=1, options=3):
+    """The effective stream profile: the knobs the engine runs with and the rules they imply.
+
+    Intended for a tool or overlay that needs to show what the channel is doing without duplicating
+    the catalogue. Every value here is read from the same inputs the service uses, so the profile
+    cannot drift from behaviour.
+    """
+    pool = pool_for(mode)
+    durations = [CATALOGUE[m][0] for m in pool]
+    weights = [CATALOGUE[m][1] for m in pool]
+    return {
+        "mode": mode,
+        "window": window,
+        "audience": audience,
+        "seed": seed,
+        "rotation_seed": rotation_seed,
+        "slots": list(BINGO_SLOTS),
+        "rules": {
+            "poll_options": options,
+            "vote_window_seconds": window,
+            "rotation_uses_votes": False,
+            "one_mod_per_slot": True,
+            "no_immediate_repeat": True,
+            "duration_seconds": {"min": min(durations), "max": max(durations)},
+            "weight_range": {"min": min(weights), "max": max(weights)},
+        },
+        "pool_size": len(pool),
+        "mods": [
+            {"mod": m, "duration": CATALOGUE[m][0], "weight": CATALOGUE[m][1],
+             "slot": BINGO_GROUP[m]}
+            for m in pool
+        ],
+    }
+
+
 
 
 class Poll:

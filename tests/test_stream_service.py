@@ -90,6 +90,17 @@ class StreamServiceTest(unittest.TestCase):
         again = _get(self.base + "/channels/devuser/mods")
         self.assertEqual([s["mod"] for s in again["slots"]], [s["mod"] for s in slots])
 
+    def test_stream_profile_over_http(self):
+        prof = _get(self.base + "/stream/profile")
+        self.assertEqual(prof["mode"], "tag")
+        self.assertEqual(prof["pool_size"], len(prof["mods"]))
+        self.assertGreater(prof["pool_size"], 0)
+        for m in prof["mods"]:
+            self.assertIn(m["slot"], prof["slots"])
+            self.assertGreater(m["duration"], 0)
+            self.assertGreater(m["weight"], 0)
+        self.assertEqual(prof["rules"]["rotation_uses_votes"], False)
+
 
 if __name__ == "__main__":
     unittest.main()
