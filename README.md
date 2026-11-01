@@ -21,24 +21,28 @@ Host and join
    longer host name leaves less room and can run out.
 3. **Patch copy A as the host:**
    `python3 tools/patch_client.py --profile host-play --in "<A>/hns/Binaries/Win64/Streamline.exe" --out Streamline.host.exe`
-   then put `Streamline.host.exe` back as `Streamline.exe` and add the listen map to
-   `hns/Saved/Config/WindowsNoEditor/Engine.ini`:
+   then put `Streamline.host.exe` back as `Streamline.exe` and write a `listen.ini` next to it:
 
        [/Script/EngineSettings.GameMapsSettings]
        GameDefaultMap=/Game/Maps/GameCon/GameCon_PersistentLevel
        LocalMapOptions=?game=Tag?listen?IsHost=true?PlayerSessionID=host-1
 
    Use `host-play`, not `host`: the host also has to pass the launcher check and reach the mock
-   login. With the bare `host` set it stops at that check before opening the listen socket.
+   login, and the bare `host` set stops at that check. Pass the map file on the command line with
+   `-EngineIni=<path>\listen.ini` — a fresh copy may not have the config directory the engine reads,
+   and the flag works regardless.
 
 4. **Patch copy B as the joiner:** `--profile play`.
 5. **Start the mock** where both copies can reach it:
    `python3 mock_appserver.py 8096`
    The defaults are the working configuration. For a LAN, set both the pak address and `GUL_BASE`
    to the same address, for example `http://192.168.1.20:8096`; `127.0.0.1` is the default.
-6. **Start A.** It boots as a listen server on UDP 7777 and waits for a second player.
+6. **Start A**, for example
+   `Streamline.exe -NOSTEAM -EngineIni="<A>\listen.ini" -windowed -resx=1024 -resy=768`.
+   It boots GameCon as a listen server on UDP 7777 and waits for a second player.
 7. **Start B.** It logs in through the mock; the mock's `processUrl` reply carries the join link,
-   and B travels into A's match.
+   and B travels into A's match. If B stays on HOME, launch it with
+   `-RunURL=streamline:/join/game/1`, the form the verified join uses.
 8. **Expect:** B logs `Welcomed by server (Level: /Game/Maps/GameCon…)`, A logs
    `Join succeeded`, and both render the round intro, HUD and timer.
 
