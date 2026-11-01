@@ -123,6 +123,7 @@ Patch a copy of your own executable; nothing patched is distributed here.
       --out Streamline.host.exe
 
   python3 tools/patch_client.py --profile host --verify Streamline.host.exe
+  python3 tools/patch_client.py --detect Streamline.host.exe
   python3 tools/patch_client.py --profile list
 
 Profiles:

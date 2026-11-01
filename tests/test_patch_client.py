@@ -581,5 +581,42 @@ class ProfileInvariantTest(unittest.TestCase):
         self.assertIn("activate_server_ret", sites)
 
 
+class DetectTest(CliTest):
+    """--detect reports which named profiles an existing copy already matches."""
+
+    def _patched(self, profile):
+        tmp = tempfile.mkdtemp(prefix="patch_client_detect_")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        out = os.path.join(tmp, "Streamline.out.exe")
+        with open(out, "wb") as fh:
+            fh.write(fixture())
+        data = bytearray(open(out, "rb").read())
+        pc.apply_patches(data, pc.PROFILES[profile])
+        with open(out, "wb") as fh:
+            fh.write(data)
+        return out
+
+    def test_pristine_fixture_matches_nothing(self):
+        tmp = tempfile.mkdtemp(prefix="patch_client_detect_")
+        self.addCleanup(shutil.rmtree, tmp, True)
+        src = os.path.join(tmp, "Streamline.exe")
+        with open(src, "wb") as fh:
+            fh.write(fixture())
+        code, text = self._run(["--detect", src])
+        self.assertEqual(code, 0, text)
+        self.assertIn("matches no profile", text)
+
+    def test_client_build_reports_client(self):
+        code, text = self._run(["--detect", self._patched("client")])
+        self.assertEqual(code, 0, text)
+        self.assertIn("client", text)
+
+    def test_superset_build_reports_both(self):
+        code, text = self._run(["--detect", self._patched("listen-url")])
+        self.assertEqual(code, 0, text)
+        self.assertIn("host-min", text)
+        self.assertIn("listen-url", text)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

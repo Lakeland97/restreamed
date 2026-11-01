@@ -726,12 +726,31 @@ def _print_table():
     print("Every patch recomputes the PE checksum.")
 
 
+def _detect(path):
+    """Report every profile whose patched bytes are all present in `path`."""
+    with open(path, "rb") as handle:
+        data = bytearray(handle.read())
+    matches = []
+    for name, profile in PROFILES.items():
+        try:
+            ok, _rows = verify(data, profile)
+        except PatchError:
+            ok = False
+        if ok:
+            matches.append(name)
+    if not matches:
+        print("%s matches no profile (unpatched, or a combination outside the named profiles)" % path)
+        return 0
+    print("%s matches: %s" % (path, ", ".join(matches)))
+    return 0
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="patch_client.py",
         description="Patch your own Streamline.exe into the host builds.",
     )
-    parser.add_argument("--profile", required=True,
+    parser.add_argument("--profile",
                         help="one of: %s, or list" % ", ".join(PROFILES))
     parser.add_argument("--in", dest="src", metavar="EXE",
                         help="your unpatched Streamline.exe")
@@ -739,15 +758,21 @@ def main(argv=None):
                         help="patched copy to write (never the input)")
     parser.add_argument("--verify", nargs="?", const="", metavar="EXE", default=None,
                         help="verify an existing patched copy instead of writing one")
+    parser.add_argument("--detect", metavar="EXE",
+                        help="report which profiles an existing copy already matches")
     parser.add_argument("--add", action="append", default=[], metavar="SITE",
                         help="add one site to the profile (repeatable)")
     parser.add_argument("--drop", action="append", default=[], metavar="SITE",
                         help="drop one site from the profile (repeatable)")
     args = parser.parse_args(argv)
 
+    if args.detect:
+        return _detect(args.detect)
     if args.profile == "list":
         _print_table()
         return 0
+    if not args.profile:
+        parser.error("--profile is required unless --detect or --profile list is used")
     if args.profile not in PROFILES:
         parser.error("unknown profile %r (one of: %s, or list)"
                      % (args.profile, ", ".join(PROFILES)))
