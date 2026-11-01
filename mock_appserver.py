@@ -1013,6 +1013,30 @@ def server_ip_reply():
         }]))
 
 
+def open_server_reply():
+    """Reply for getOpenServer: Result.Success(OpenServerResponse.…).
+
+    The quickmatch callback FUN_14066cd70 switches on the OpenServerResponse index at +0x1c:
+    OSServer = 0 (arity 1, the record whose five names the callback reads by reflection),
+    OSDisabled = 1, OSNoFreeServers = 2 (both arity 0). Index 1 also latches
+    quickmatchDisabled (FUN_1407a9d20 writes byte +0xc8 = 1); both 1 and 2 end in
+    setError("Result:ServerError", locale+0x12c / +0x114) and never travel, so they need no
+    game server — GUL_OPEN_SERVER=disabled|nofree selects them for offline branch tests.
+    """
+    variant = {"disabled": 1, "nofree": 2}.get(os.environ.get("GUL_OPEN_SERVER", "").strip(), 0)
+    if variant:
+        return haxe_ser.handshake_result_dsur(
+            HxEnum("appserver.api.OpenServerResponse", variant, args=[]))
+    return haxe_ser.handshake_result_dsur(
+        HxEnum("appserver.api.OpenServerResponse", 0, args=[{
+            "host": os.environ.get("GUL_GAME_HOST", "127.0.0.1"),
+            "port": int(os.environ.get("GUL_GAME_PORT", "7777")),
+            "party": "",
+            "playerSession": "",
+            "gameSession": "",
+        }]))
+
+
 OP_REPLIES = {
     # Round 5: every XIAppServerPublic RPC result is wrapped in DataStoreUpdateResponse
     # (branch A: empty updatedEntities → returnVal passthrough).
@@ -1065,14 +1089,7 @@ OP_REPLIES = {
     # DataStoreClient gate FUN_1411f7750: it dyn-casts the payload to DataStoreUpdateResponse
     # (0x1411f77c9) and re-wraps returnVal as Result.Success for the op callback. A bare enum
     # payload fails that cast and AVs at 0x1411f781e before FUN_14066cd70 runs.
-    "getOpenServer": lambda: haxe_ser.handshake_result_dsur(
-        HxEnum("appserver.api.OpenServerResponse", 0, args=[{
-            "host": os.environ.get("GUL_GAME_HOST", "127.0.0.1"),
-            "port": int(os.environ.get("GUL_GAME_PORT", "7777")),
-            "party": "",
-            "playerSession": "",
-            "gameSession": "",
-        }])),
+    "getOpenServer": open_server_reply,
     # Dedicated-server registration / activation (private plane). The private and config clients are
     # PrivateClient objects (ctor FUN_1408f9570: base FUN_1408f7330 writes the CookieClient vtable,
     # then 0x142ee0830 overwrites it). PrivateClient.__Field (0x1408f9130) adds only m_sharedSecret
