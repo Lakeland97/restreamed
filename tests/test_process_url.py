@@ -5,6 +5,7 @@ The wire literal was verified against the client contract: tag 0 is UJoinGame, p
 string becomes ?PlayerSessionID= on the travel URL.
 """
 import os
+import re
 import sys
 import unittest
 
@@ -13,6 +14,19 @@ sys.path.insert(0, ROOT)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
 import mock_appserver  # noqa: E402
+
+# The client's UrlAction constructor table (VA 0x143b0b600 in the shipped exe), in
+# declaration/index order. The `j`-form reply the mock emits carries this index, and the
+# consumer switches on it at 0x1406724c4 (case 0 = UJoinGame).
+URL_ACTION_CONSTRUCTORS = [
+    "UJoinGame",              # 0, arity 1 (the join payload object)
+    "UNoGame",                # 1
+    "UHostConnected",         # 2
+    "UAccessDenied",          # 3
+    "UGameForbidden",         # 4
+    "UExternalNotAllowed",    # 5
+    "UProcessed",             # 6
+]
 
 
 class ProcessUrlReplyTest(unittest.TestCase):
@@ -44,6 +58,30 @@ class ProcessUrlReplyTest(unittest.TestCase):
                 self.assertTrue(wire.startswith("nw"), kind)
                 self.assertIn("appserver.remoting.DataStoreUpdateResponse", wire, kind)
                 self.assertIn("appserver.api.UrlAction", wire, kind)
+        finally:
+            if saved is None:
+                os.environ.pop("GUL_URL_ACTION", None)
+            else:
+                os.environ["GUL_URL_ACTION"] = saved
+
+    def test_action_indices_match_constructor_table(self):
+        """Each mode encodes the index its constructor has in the client's table."""
+        saved = os.environ.get("GUL_URL_ACTION")
+        try:
+            for mode, name in (("", "UJoinGame"), ("nogame", "UNoGame"),
+                               ("denied", "UAccessDenied")):
+                if mode:
+                    os.environ["GUL_URL_ACTION"] = mode
+                else:
+                    os.environ.pop("GUL_URL_ACTION", None)
+                match = re.search(r"UrlAction:(\d+):(\d+)",
+                                  mock_appserver.process_url_join_reply())
+                self.assertIsNotNone(match, mode or "join")
+                self.assertEqual(int(match.group(1)),
+                                 URL_ACTION_CONSTRUCTORS.index(name), mode or "join")
+                if name == "UJoinGame":
+                    # index 0 carries the {host,port,party,playerSession,gameSession} object
+                    self.assertEqual(int(match.group(2)), 1)
         finally:
             if saved is None:
                 os.environ.pop("GUL_URL_ACTION", None)
