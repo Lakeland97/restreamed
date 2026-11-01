@@ -79,7 +79,7 @@ class EndOfMatchRewardsReplyTest(unittest.TestCase):
     def test_payload_is_an_empty_array(self):
         # FUN_140cbf340 reads returnVal as an array (Array<Dynamic>, else cpp.VirtualArray) and
         # dereferences [array+8] with no null guard; `{}` left that pointer NULL (see
-        # runtime/CONSUMER_GAPS.md §4).
+        # the rewards consumer reads an array; see the reply audit).
         self.assertEqual(reply_walk.success_returnval(self.body), [])
 
 
