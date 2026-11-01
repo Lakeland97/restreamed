@@ -11,8 +11,6 @@ patchers edit files, so they run on any platform with Python.
 Host and join
 -------------
 
-You'll end up with two clients in a live match, on one machine or over a LAN.
-
 1. **Get your own copy of the game.** You need your own legally obtained copy; nothing in this
    repository ships game code or assets.
 2. **Redirect the pak, once per copy.** The client's backend URL lives in the pak:
