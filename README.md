@@ -63,8 +63,8 @@ Status
 - The community registry serves the server list the overlay reads.
 - The stream layer's read side: with `GUL_STREAM` the mock serves a deterministic mod rotation
   (four slots, one per bingo group, each mod timed by its own duration and drawn by its template
-  weight), the channel mod schedule, and a profile built from the same inputs, alongside the polls
-  and sales endpoints the client asks for.
+  weight), the channel mod schedule, and a profile built from the same inputs, alongside the poll
+  endpoints the client asks for.
 - The local backend and patcher: `mock_appserver.py` speaks the client's haxe.remoting dialect and
   returns the datastore payloads that finish login and seed a session; the patcher verifies every byte
   it replaces and repairs the PE checksum; an offline suite covers the serializer, entity payloads,
