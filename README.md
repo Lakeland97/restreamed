@@ -61,6 +61,10 @@ Status
 - Practice, challenge and tutorial modes load and run locally. The tutorial is one-shot until
   its played flag is reset.
 - The community registry serves the server list the overlay reads.
+- The stream layer's read side: with `GUL_STREAM` the mock serves a deterministic mod rotation
+  (four slots, one per bingo group, each mod timed by its own duration and drawn by its template
+  weight), the channel mod schedule, and a profile built from the same inputs, alongside the polls
+  and sales endpoints the client asks for.
 - The local backend and patcher: `mock_appserver.py` speaks the client's haxe.remoting dialect and
   returns the datastore payloads that finish login and seed a session; the patcher verifies every byte
   it replaces and repairs the PE checksum; an offline suite covers the serializer, entity payloads,
@@ -68,8 +72,12 @@ Status
 
 ### What does not work
 
-- The stream layer — no chat polls, rule votes, bets or gameplay mods. What the layer was and what a
-  local replacement needs: [StreamLayer](https://github.com/Lakeland97/restreamed/wiki/StreamLayer).
+- **Steering which gameplay mod a match uses.** A hosted match applies the game's own catalogue mods
+  on its own — a mod, its HUD card and its effect appear without the service — so making a mod happen
+  is solved. Feeding the local rotation's choice into a live match is not: the client's mod state is
+  scripted state, not the replicated `AppliedMod` arrays, and those arrays stay empty in hosted play.
+  What the layer was, what the client still expects and what a local replacement has to provide:
+  [StreamLayer](https://github.com/Lakeland97/restreamed/wiki/StreamLayer).
 - A silent wardrobe selection for every item. With `all-cosmetics-equip` the slot pages open, a pick
   applies the item and it persists. An item the player owns applies with no dialog. An item outside the
   player's starting set applies but the post-apply refresh reports
