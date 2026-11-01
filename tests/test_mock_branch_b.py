@@ -402,5 +402,39 @@ class BranchBStartSessionTest(unittest.TestCase):
                 self.assertEqual(_element_class_name(entity), MODEL_ENTITY)
 
 
+class BooleanKnobTest(unittest.TestCase):
+    """The README bills `GUL_DSUR_HX` and `GUL_DSUR_HX_EMPTY_TEMPLATE` as 0/1 switches.
+
+    The module reads these through `_env_flag`, so the documented off values really do turn the
+    behaviour off instead of being truthy strings. Run in a subprocess because importing the mock
+    installs the working defaults into `os.environ`.
+    """
+
+    def _flag(self, name, value):
+        env = dict(os.environ)
+        if value is None:
+            env.pop(name, None)
+        else:
+            env[name] = value
+        code = ("import sys; sys.path.insert(0, %r); import mock_appserver as m; "
+                "print(int(m._env_flag(%r)))" % (REPO_ROOT, name))
+        out = subprocess.run([sys.executable, "-c", code], env=env, check=True,
+                             stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        return out.stdout.strip() == b"1"
+
+    def test_off_values_are_off(self):
+        for value in ("0", "false", "no", ""):
+            with self.subTest(value=value):
+                self.assertFalse(self._flag("GUL_DSUR_HX", value))
+
+    def test_on_values_are_on(self):
+        for value in ("1", "true", "yes"):
+            with self.subTest(value=value):
+                self.assertTrue(self._flag("GUL_DSUR_HX", value))
+
+    def test_unset_takes_the_working_default(self):
+        self.assertTrue(self._flag("GUL_DSUR_HX", None))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

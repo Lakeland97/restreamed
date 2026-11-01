@@ -65,6 +65,11 @@ _WORKING_DEFAULTS = {
 for _name, _value in _WORKING_DEFAULTS.items():
     os.environ.setdefault(_name, _value)
 
+
+def _env_flag(name):
+    """A knob the README bills as on/off. "0", "false", "no" and the empty string are off."""
+    return os.environ.get(name, "").strip().lower() not in ("", "0", "false", "no")
+
 _DEV_JWT = "x." + base64.urlsafe_b64encode(b'{"user":"devuser"}').decode() + ".z"
 
 SESSION_CTX = {
@@ -647,7 +652,7 @@ def _dsur(payload):
         raw = os.environ.get("GUL_DSUR_BLOB_RAW")
         im = os.environ.get("GUL_DSUR_BLOB_INTMAP")
         extra = ()
-        if os.environ.get("GUL_DSUR_HX"):
+        if _env_flag("GUL_DSUR_HX"):
             # Spec-aware branch B (DECOMPILE_NOTES R-spec): entityTypeInfo is the external type
             # cache stream and updatedEntities is an Array<String> of separately serialized objects,
             # each read with {typeInflater: cache, skipHeader: true}. Built by tools/hxinflate.py.
@@ -702,7 +707,7 @@ def _dsur(payload):
                         "GUL_DSUR_HX_CDEF_FIELDS",
                         '["autoConstruct","name","templateData"]')))
                 comp_defs = {}
-                if not os.environ.get("GUL_DSUR_HX_EMPTY_TEMPLATE"):
+                if not _env_flag("GUL_DSUR_HX_EMPTY_TEMPLATE"):
                     # Field-name candidates come from the class's hxcpp name table; the values here
                     # are also overridable so a variant is an env change rather than an edit.
                     # templateData carries a ComponentPropertyDefinition instance, not a map: the

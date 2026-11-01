@@ -35,14 +35,15 @@ Host and join
 4. **Patch copy B as the joiner:** `--profile play`.
 5. **Start the mock** where both copies can reach it:
    `python3 mock_appserver.py 8096`
-   The defaults are the working configuration. For a LAN, set both the pak address and `GUL_BASE`
-   to the same address, for example `http://192.168.1.20:8096`; `127.0.0.1` is the default.
+   The defaults are the working configuration. For a LAN, set the pak address and `GUL_BASE` to the
+   mock's address, for example `http://192.168.1.20:8096`, and set `GUL_GAME_HOST` to A's address:
+   the join reply carries that host, so leaving it at `127.0.0.1` sends B to itself.
 6. **Start A**, for example
    `Streamline.exe -NOSTEAM -EngineIni="<A>\listen.ini" -windowed -resx=1024 -resy=768`.
    It boots GameCon as a listen server on UDP 7777 and waits for a second player.
 7. **Start B.** It logs in through the mock; the mock's `processUrl` reply carries the join link,
    and B travels into A's match. If B stays on HOME, launch it with
-   `-RunURL=streamline:/join/game/1`, the form the verified join uses.
+   `-RunURL=streamline:/join/game/1`.
 8. **Expect:** B logs `Welcomed by server (Level: /Game/Maps/GameCon…)`, A logs
    `Join succeeded`, and both render the round intro, HUD and timer.
 
@@ -65,9 +66,13 @@ Status
 - A finished round records its winner and the score it carries into the match payload.
 - Joining from a server-sent join URL: the mock's `processUrl` reply reaches the handler and the client
   joins the returned listen host (`Welcomed`; the host logs `Join succeeded`).
-- Practice, challenge and tutorial modes load and run locally. The tutorial is one-shot until
-  its played flag is reset.
+- Practice, challenge and tutorial modes load and run locally. The tutorial is one-shot: after it,
+  `FirstMatchData.PlayedTutorial` in `GameUserSettings.ini` stays true and the entry modal does not
+  return until that value is set back to false.
 - The community registry serves the server list the overlay reads.
+- An out-of-process overlay (`tools/overlay`) for clients that are not patched: it arms the map-loaded
+  latch so a native-travel join renders, and hosts the find/host panels as triggers into the game's
+  own menus.
 - The stream layer's read side: with `GUL_STREAM` the mock serves a deterministic mod rotation
   (four slots, one per bingo group, each mod timed by its own duration and drawn by its template
   weight), the channel mod schedule, and a profile built from the same inputs, alongside the poll
@@ -123,7 +128,15 @@ session context) is the default. The knobs below exist for A/B-testing an altern
 | `GUL_PGS_PARTY_ID` | `p1` | party id reported by the PGS party legs |
 | `GUL_PGS_ROLES` | empty | comma-separated PGS roles on the user record; `broadcaster` makes NEW MATCH skip the stream sign-in and open the map picker |
 | `GUL_OPEN_SERVER` | unset | `disabled` or `nofree` answer `getOpenServer` with those `OpenServerResponse` variants instead of `OSServer` |
-| `GUL_SERVER_IP` | unset | answer `getServerIp` with `SIServer{host, port, party, playerSession, gameSession}`; unset answers `SIHostNotConnected`. Endpoint fields come from `GUL_GAME_PORT`, `GUL_JOIN_PARTY`, `GUL_JOIN_SESSION`, `GUL_JOIN_GAMESESSION` |
+| `GUL_GAME_HOST` | `127.0.0.1` | the host a joining client is told to travel to; set it to the host's LAN address |
+| `GUL_SERVER_IP` | unset | answer `getServerIp` with `SIServer{host, port, party, playerSession, gameSession}`; unset answers `SIHostNotConnected`. Endpoint fields come from `GUL_GAME_HOST`, `GUL_GAME_PORT`, `GUL_JOIN_PARTY`, `GUL_JOIN_SESSION`, `GUL_JOIN_GAMESESSION` |
+| `GUL_STREAM` | unset | `1` enables the stream legs: polls, votes, the rotation and `stream/profile` |
+| `GUL_STREAM_MODE` | `tag` | allow-list the rotation draws from |
+| `GUL_STREAM_WINDOW` | `25` | poll window, seconds |
+| `GUL_STREAM_AUDIENCE` | `14` | size of the simulated audience |
+| `GUL_STREAM_SEED` / `GUL_ROTATION_SEED` | `1` | seed the poll audience and the mod rotation |
+| `GUL_STREAM_VIEWERS` | `42` | viewer count the live-channel entry reports |
+| `GUL_STREAM_CHANNEL` | the session's identity id | channel id the stream legs answer for |
 | `GUL_LOG` | `runtime/mock_appserver.log` | request log path (the log directory is created if missing) |
 
 Each login gets its own display name (`Player1`, `Player2`, ...), so two clients show distinct names.
@@ -135,11 +148,11 @@ Patching your client
 
 Patch a copy of your own executable; nothing patched is distributed here.
 
-  python3 tools/patch_client.py --profile host \
+  python3 tools/patch_client.py --profile host-play \
       --in "/path/to/Streamline/hns/Binaries/Win64/Streamline.exe" \
       --out Streamline.host.exe
 
-  python3 tools/patch_client.py --profile host --verify Streamline.host.exe
+  python3 tools/patch_client.py --profile host-play --verify Streamline.host.exe
   python3 tools/patch_client.py --detect Streamline.host.exe
   python3 tools/patch_client.py --profile list
 
@@ -157,8 +170,13 @@ Profiles:
             crashing, a listed item applies the entity the UI holds, and an item the
             player owns applies silently. Items the player does not own still report
             the missing container entry (see the limitation above).
-  host      the full working host set: identity, post-match loop, round timer, the
-            login/admission byte patches and the match-data patches.
+  host-play the working host: host plus the launcher identity cave and the
+            cosmetic/loading fixes, so it passes the launcher check, reaches the mock
+            login and renders a joined match.
+  host      the host byte patches and caves without the launcher identity or the
+            cosmetic/loading fixes: identity, post-match loop, round timer, the
+            login/admission byte patches and the match-data patches. Started directly
+            it stops at the launcher check.
   host-min  the same byte patches without any cave: no .rdata mapping, no stubs, for
             bisecting which cave causes a problem.
   list      print every site with its virtual address, file offset and purpose.
