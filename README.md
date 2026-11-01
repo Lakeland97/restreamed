@@ -109,8 +109,8 @@ launcher check, keep a joined client off the loading widget, and make a round wa
 [PatchIndex](https://github.com/Lakeland97/restreamed/wiki/PatchIndex).
 
 Cosmetics are unlocked locally rather than bought: `all-cosmetics-equip` supplies the full id set and the
-equip fixes, so no slot asks for a purchase. There is no commerce path in the service — flash sales,
-wagers and bets are not implemented, so nothing is priced or charged.
+equip fixes. There is no commerce path in the service — flash sales, wagers and bets are not implemented,
+so nothing is priced or charged.
 
 Matches are hosted by a player's client on UDP 7777 and joined through the mock's `processUrl` reply,
 not through the original matchmaking or a dedicated server.
