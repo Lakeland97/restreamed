@@ -20,13 +20,16 @@ Host and join
    is same-length: the trailing `/` characters pad the replacement to the original length, so a
    longer host name leaves less room and can run out.
 3. **Patch copy A as the host:**
-   `python3 tools/patch_client.py --profile host --in "<A>/hns/Binaries/Win64/Streamline.exe" --out Streamline.host.exe`
+   `python3 tools/patch_client.py --profile host-play --in "<A>/hns/Binaries/Win64/Streamline.exe" --out Streamline.host.exe`
    then put `Streamline.host.exe` back as `Streamline.exe` and add the listen map to
    `hns/Saved/Config/WindowsNoEditor/Engine.ini`:
 
        [/Script/EngineSettings.GameMapsSettings]
        GameDefaultMap=/Game/Maps/GameCon/GameCon_PersistentLevel
        LocalMapOptions=?game=Tag?listen?IsHost=true?PlayerSessionID=host-1
+
+   Use `host-play`, not `host`: the host also has to pass the launcher check and reach the mock
+   login. With the bare `host` set it stops at that check before opening the listen socket.
 
 4. **Patch copy B as the joiner:** `--profile play`.
 5. **Start the mock** where both copies can reach it:
