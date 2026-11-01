@@ -269,6 +269,19 @@ SITES = (
        "serialize exactly one score element"),
     _s("round_end_le2", 0x140CCF3F2, 0x00CCE7F2, "01", "02",
        "end the round at <=2 contestants (immediate round end; conflicts with round_timer)"),
+
+    # --- UI hosting (experimental): the picker's solo travel asks for a listen world -----------
+    # `ChooseMapMenu.onStartGame` -> `asyncStartGame` ends in `connectToServer(map, "solo")`; its URL
+    # builder loads `?IsHost=` here and appends the flag. Retargeting that literal to a longer one
+    # that also asks for `?listen` makes the same travel create a listen world, with no variant
+    # option, so the variant stays `Hosted` - the tag the host StartPlay patch accepts.
+    _s("listen_url_hook", 0x1407A9698, 0x007A8A98, "488d0501dd6f02", "488d05d90df202",
+       "load the extended option literal for the solo travel URL builder"),
+    _s("listen_url_len", 0x1407A96BE, 0x007A8ABE, "08", "0f",
+       "length of the extended literal (15 bytes instead of 8)"),
+    _s("listen_url_text", 0x1436CA478, 0x036C9678, bytes(15),
+       "3f6c697374656e3f4973486f73743d",
+       "the literal itself: ?listen?IsHost= (written into .rdata zero padding)"),
 )
 
 SITE_BY_NAME = {site.name: site for site in SITES}
@@ -372,6 +385,13 @@ PROFILES = {
         "host-min",
         "host byte patches only: no caves, no section mapping",
         HOST_BYTES,
+        False,
+    ),
+    "listen-url": Profile(
+        "listen-url",
+        "host-min plus the UI-hosting URL edit: NEW MATCH reaches the map picker and its confirm "
+        "travel asks for a listen world. Bytes verified against the retail image, not run",
+        HOST_BYTES + ("listen_url_hook", "listen_url_len", "listen_url_text"),
         False,
     ),
 }
