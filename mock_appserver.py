@@ -1044,7 +1044,21 @@ OP_REPLIES = {
     "checkVersion": lambda: _dsur(session_context() if "checkVersion" in OP_CTX_OPS() else None),
     "startSession": lambda: _dsur(session_context()),
     "clientHeartbeat": lambda: _dsur({"interval_sec": 60}),
-    "getConfig": lambda: _dsur(session_context() if "getConfig" in OP_CTX_OPS() else None),
+    # getConfig's Success consumer FUN_140b631a0 -> FUN_1407adbd0 does NOT tolerate a null
+    # returnVal: it dereferences the value with the hxcpp field accessor (vtable +0x70) and would
+    # read [0+0x70] on Success(null). The seven names below are the ones it looks up; publicConfig
+    # is handed straight to FUN_1407ad1f0, the same processor doHandshake's reply goes through, so
+    # it must be that object. The timers land in the manager at +0xe0/+0xe8/+0xf0/+0xf8 and the
+    # two booleans at +0x112/+0x113 (runtime/CONSUMER_GAPS.md).
+    "getConfig": lambda: _dsur(session_context() if "getConfig" in OP_CTX_OPS() else {
+        "publicConfig": handshake_context(),
+        "hostedDataTtlSecs": 60,
+        "shutdownDelaySecs": 30,
+        "hostWaitTimeoutSecs": 120,
+        "nohostWaitTimeoutSecs": 120,
+        "lowCcu": False,
+        "sendMatchData": True,
+    }),
     # Public-plane op: the reply MUST be a branch-A DataStoreUpdateResponse whose returnVal is
     # the OpenServerResponse enum. The public client is a CookieClient (base ctor 0x1411f6a70
     # writes the DataStoreClient vtable), so every Result.Success on /remoting passes the
@@ -1059,20 +1073,31 @@ OP_REPLIES = {
             "playerSession": "",
             "gameSession": "",
         }])),
-    # Dedicated-server registration / activation (private plane).
-    "getCurrentIP": lambda: haxe_ser.result_success(
+    # Dedicated-server registration / activation (private plane). The private and config clients are
+    # PrivateClient objects (ctor FUN_1408f9570: base FUN_1408f7330 writes the CookieClient vtable,
+    # then 0x142ee0830 overwrites it). PrivateClient.__Field (0x1408f9130) adds only m_sharedSecret
+    # and prepareRequest and delegates the rest to CookieClient.__Field (0x1408f76b0), so
+    # handleResponse is still CookieClient's FUN_1408f8050 -> FUN_1411f7b30 (DataStoreClient) ->
+    # gate FUN_1411f7750. Same gate, same envelope: private replies carry the DSUR too.
+    "getCurrentIP": lambda: _dsur(
         os.environ.get("GUL_PUBLIC_IP", "127.0.0.1")),
-    "getServerOptions": lambda: haxe_ser.result_success({
+    "getServerOptions": lambda: _dsur({
         "gameKind": HxEnum("appserver.api.GameKind", 2, []),  # KNoHost
         "partyID": "",
         "hostToken": "",
         "gsess": "",
         "urlVisibility": "public",
     }),
-    "hostedServerHeartbeat": lambda: haxe_ser.result_success({}),
-    "onEndMatch": lambda: haxe_ser.result_success({}),
-    "giveEndOfMatchRewards": lambda: haxe_ser.handshake_result_dsur({}),
-    "hostHasJoined": lambda: haxe_ser.result_success({}),
+    "hostedServerHeartbeat": lambda: _dsur({}),
+    "onEndMatch": lambda: _dsur({}),
+    # FUN_140cbf340 (the MatchOverPhase completion the call site passes as this op's callback)
+    # reads returnVal as an ARRAY: Array<Dynamic> cast, else a cpp.VirtualArray, then it walks
+    # local_288[i].{provider, accountID, rewards: model._hx_system.RewardsReturn}. It reads the
+    # array's length at [local_288+8] with no null guard, so a non-array payload ({}, the old
+    # reply, or null) AVs at 0x8 once the match has any player state. An empty array is the safe
+    # minimal shape: no rewards to grant, no dereference.
+    "giveEndOfMatchRewards": lambda: haxe_ser.handshake_result_dsur([]),
+    "hostHasJoined": lambda: _dsur({}),
     "getServerIp": server_ip_reply,
 }
 

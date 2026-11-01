@@ -76,8 +76,11 @@ class EndOfMatchRewardsReplyTest(unittest.TestCase):
         # The old reply put an empty object straight into Success: `...Success:1og`.
         self.assertNotIn(b"Success:1og", self.body)
 
-    def test_payload_is_still_an_empty_object(self):
-        self.assertEqual(reply_walk.success_returnval(self.body), {})
+    def test_payload_is_an_empty_array(self):
+        # FUN_140cbf340 reads returnVal as an array (Array<Dynamic>, else cpp.VirtualArray) and
+        # dereferences [array+8] with no null guard; `{}` left that pointer NULL (see
+        # runtime/CONSUMER_GAPS.md §4).
+        self.assertEqual(reply_walk.success_returnval(self.body), [])
 
 
 if __name__ == "__main__":
