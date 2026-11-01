@@ -377,9 +377,10 @@ PROFILES = {
     ),
     "host-play": Profile(
         "host-play",
-        "host plus the DRM identity cave: a host that passes the launcher check, so it can render and "
-        "log in instead of stopping at the Steam/Twitch dialog",
-        HOST_BYTES + CAVE_SITES + CLIENT_SITES,
+        "host plus the DRM identity cave and the cosmetic/loading fixes: a host that passes the "
+        "launcher check, dresses the HOME model and loads a joined match instead of sitting on the "
+        "LOADING widget",
+        HOST_BYTES + CAVE_SITES + CLIENT_SITES + ("cosmetic_clear_skip", "no_loading_screen"),
         True,
     ),
 }
