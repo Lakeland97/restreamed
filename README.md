@@ -97,6 +97,31 @@ Status
   items and the catalogue is larger. The client stays up and keeps the cosmetic.
 - The host has no appserver session, so entity lookups miss. The effect is limited to the UI.
 
+### What this changes, and what comes next
+
+The backend is a local stand-in, not the original service. Nothing here talks to Twitch or to the
+shut-down PGS: identities, sessions and datastore payloads are synthesized by the mock, and the launcher
+identity request is answered locally instead of by Steam or the Twitch launcher.
+
+Patches are applied to your own executable and every byte is verified before writing. They skip the
+launcher check, keep a joined client off the loading widget, and make a round wait for a second player
+(`wait_two`) — deliberate deviations, each listed on
+[PatchIndex](https://github.com/Lakeland97/restreamed/wiki/PatchIndex).
+
+Cosmetics are unlocked locally rather than bought: `all-cosmetics-equip` supplies the full id set and the
+equip fixes, so no slot asks for a purchase. There is no commerce path in the service — flash sales,
+wagers and bets are not implemented, so nothing is priced or charged.
+
+Matches are hosted by a player's client on UDP 7777 and joined through the mock's `processUrl` reply,
+not through the original matchmaking or a dedicated server.
+
+Next:
+
+- **Steer the mod a match applies.** The game already chooses and applies catalogue mods by itself; the
+  local rotation is served but not yet fed in. This is the one piece of the stream layer still missing.
+- **A host that is not a player**, so a match does not depend on one person's client.
+- **The remaining vote legs**: wagers, bets and flash sales.
+
 Design notes, byte patches and open problems: [wiki](https://github.com/Lakeland97/restreamed/wiki).
 
 Mock reference
