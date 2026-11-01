@@ -375,6 +375,13 @@ PROFILES = {
         HOST_BYTES,
         False,
     ),
+    "host-play": Profile(
+        "host-play",
+        "host plus the DRM identity cave: a host that passes the launcher check, so it can render and "
+        "log in instead of stopping at the Steam/Twitch dialog",
+        HOST_BYTES + CAVE_SITES + CLIENT_SITES,
+        True,
+    ),
 }
 
 
