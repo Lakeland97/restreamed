@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """The three op consumers the reply audit left unknown, and what they actually read.
 
-`runtime/CONSUMER_GAPS.md` traces each one. Short version:
+Short version:
 
   * `checkVersion` — callback `DedicatedServerManager.performDelayedChecks.__l6` 
     (`_hx_run` 0x1405ca630 -> FUN_1405cab40) reads only `Result.index` (tag, +0x1c). On
