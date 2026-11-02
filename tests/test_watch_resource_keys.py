@@ -95,6 +95,25 @@ class ResourceWatcherTest(unittest.TestCase):
         body = self._watch(server, "/widgets/x/updates/5")
         self.assertIn("users", body, body)
 
+    def test_the_poll_model_carries_the_two_fields_the_client_requires(self):
+        # The poll update handler reads `options` and `votes` from the model and jumps to its
+        # "polls/updates returned malformed response" branch (0x140BAEB0E) when either lookup is
+        # null, so both keys have to be present in every poll-shaped reply.
+        server = self._server()
+        body = self._watch(server, "/polls/p1/updates/1")
+        model = body["polls"][0]
+        self.assertIsInstance(model.get("options"), list, model)
+        self.assertTrue(model["options"], model)
+        self.assertIsNotNone(model.get("votes"), model)
+
+    def test_the_channel_poll_leg_carries_the_same_two_fields(self):
+        # `channels/<id>/poll` is the one poll leg a started stream layer reads directly.
+        server = self._server()
+        body = self._watch(server, "/channels/c1/poll")
+        self.assertIsInstance(body.get("options"), list, body)
+        self.assertTrue(body["options"], body)
+        self.assertIsNotNone(body.get("votes"), body)
+
 
 if __name__ == "__main__":
     unittest.main()
