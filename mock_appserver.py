@@ -417,6 +417,72 @@ def pgs_party():
     return party
 
 
+# The client runs one long-poll watcher per PGS resource (`ModelWatcher`), and every reply is read
+# through that resource model's generated accessor: `getFirstUser`, `getFirstParty`,
+# `getFirstChannel`, `getFirstPoll`, `getFirstWager`, `getFirstBingo`, plus scoreboards and flash
+# sales. Those accessors read the reply object's plural key, so `parties/<id>/updates` must answer
+# `{"parties": [...]}` — the single users-shaped watcher branch answered `{"users": [...]}` for
+# every resource, which gives the other watchers a null model. Accessor table and addresses:
+# runtime/WATCHER_KEYS.md.
+WATCH_RESOURCE_KEYS = {
+    "users": "users",
+    "parties": "parties",
+    "channels": "channels",
+    "polls": "polls",
+    "wagers": "wagers",
+    "bingos": "bingos",
+    "flash_sales": "flash_sales",
+    "scoreboards": "scoreboards",
+}
+
+_WATCH_PATH = re.compile(r"^/?([A-Za-z_]+)/[^/]+/updates(?:/|$)")
+
+
+def watch_resource(path):
+    """Resource of a ModelWatcher long-poll path: `parties/p1/updates/5` -> "parties"."""
+    match = _WATCH_PATH.match(path)
+    if match and match.group(1) in WATCH_RESOURCE_KEYS:
+        return match.group(1)
+    return "users"
+
+
+def live_channel_record(channel):
+    """One live channel, shared by `GET /channels` and the channels watcher."""
+    viewers = int(os.environ.get("GUL_STREAM_VIEWERS", "42"))
+    return {
+        "id": channel, "channel_id": channel, "name": channel,
+        "title": "Streamline", "game": "Streamline",
+        "displayName": channel, "providerString": "twitch",
+        "viewer_count": viewers, "viewers": viewers, "count": viewers,
+        "is_live": True, "live": True,
+        "url": "https://www.twitch.tv/%s" % channel,
+        "thumbnail": "", "preview": "",
+    }
+
+
+def watcher_model(resource, next_stamp):
+    """One model object for a resource watcher, carrying the cursor field `update_stamp`.
+
+    The field set is what the mock can support statically; the key the client looks the object up
+    by is the part that matters (see WATCH_RESOURCE_KEYS), and the model is never empty.
+    """
+    if resource == "parties":
+        model = dict(pgs_party())
+    elif resource == "channels":
+        model = live_channel_record(_stream_channel_key())
+    elif resource == "polls":
+        channel = _stream_channel_key()
+        state = _stream_for(channel).state(time.time())
+        model = {"id": state.get("poll_id") or "poll-1", "channel": channel}
+        for field in ("poll_id", "options", "votes", "remaining", "closed", "winner"):
+            if field in state:
+                model[field] = state[field]
+    else:
+        model = {"id": "%s-1" % resource}
+    model["update_stamp"] = next_stamp
+    return model
+
+
 _STREAMS = {}
 
 
@@ -1426,6 +1492,17 @@ class Handler(BaseHTTPRequestHandler):
                 next_stamp = max(1, requested)
             else:
                 next_stamp = max(1, requested + 1)
+            resource = watch_resource(p)
+            if resource != "users":
+                # Every resource has its own watcher and its own plural reply key; see
+                # WATCH_RESOURCE_KEYS. The hold/stamp logic above is shared, so a non-user watcher
+                # cannot busy-loop either.
+                model = watcher_model(resource, next_stamp)
+                slog(f"    ({resource} watcher {p} -> {resource}[{model.get('id')}] "
+                     f"stamp={next_stamp})")
+                self._reply(json.dumps({WATCH_RESOURCE_KEYS[resource]: [model]}).encode(),
+                            ctype="application/json")
+                return
             ident = current_identity()
             iid = ident["iid"]
             user = {
@@ -1491,17 +1568,10 @@ class Handler(BaseHTTPRequestHandler):
                 channel = _stream_channel_key()
                 _stream_for(channel)
                 slog(f"    (channels -> live channel {channel})")
-                viewers = int(os.environ.get("GUL_STREAM_VIEWERS", "42"))
-                self._reply(json.dumps({"live_channels": [{
-                    "id": channel, "channel_id": channel, "name": channel,
-                    "title": "Streamline", "game": "Streamline",
-                    "displayName": channel, "providerString": "twitch",
-                    "viewer_count": viewers, "viewers": viewers, "count": viewers,
-                    "is_live": True, "live": True,
-                    "url": "https://www.twitch.tv/%s" % channel,
-                    "thumbnail": "", "preview": "",
-                }], "channels": [{"id": channel, "name": channel, "live": True}]}).encode(),
-                        ctype="application/json")
+                self._reply(json.dumps({"live_channels": [live_channel_record(channel)],
+                                        "channels": [{"id": channel, "name": channel,
+                                                      "live": True}]}).encode(),
+                            ctype="application/json")
                 return
             # TopLiveGamesWidget.updateFromPGS: empty live_channels is safe.
             slog("    (channels -> empty live_channels)")

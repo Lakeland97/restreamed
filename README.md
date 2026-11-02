@@ -231,8 +231,10 @@ Layout
 
   mock_appserver.py          Reference implementation of the client wire protocol.
                              Speaks the game's haxe.remoting dialect, serves the PGS
-                             legs (session, user watcher, channels, polls), and logs
-                             every exchange. This is the seed of the real server.
+                             legs (session, resource watchers, channels, polls), and
+                             logs every exchange. Each watcher is answered under its
+                             own plural key (`users`, `parties`, `channels`, ...).
+                             This is the seed of the real server.
 
   tools/haxe_ser.py          Serializer/deserializer for the game's Haxe wire format,
                              including the datastore update response and entity streams.
