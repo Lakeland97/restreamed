@@ -436,6 +436,7 @@ WATCH_RESOURCE_KEYS = {
 }
 
 _WATCH_PATH = re.compile(r"^/?([A-Za-z_]+)/[^/]+/updates(?:/|$)")
+_USER_RESOURCE = re.compile(r"(?:^|/)user/?$")
 
 
 def watch_resource(path):
@@ -458,6 +459,34 @@ def live_channel_record(channel):
         "url": "https://www.twitch.tv/%s" % channel,
         "thumbnail": "", "preview": "",
     }
+
+
+def user_record(next_stamp=None):
+    """The PGS user record, shared by the user watcher and the `user` resource GET.
+
+    `verifyWithPGS`'s continuation starts the channel watcher from this record (`users[0].roles` must
+    contain `broadcaster`), so the same object has to be served on both legs.
+    """
+    ident = current_identity()
+    iid = ident["iid"]
+    user = {
+        "id": iid,
+        "playerIID": iid,
+        "accountID": ident["accountID"],
+        "displayName": ident["name"],
+        "provider": "twitch",
+        "providerString": "twitch",
+        "active_party": os.environ.get("GUL_PGS_PARTY_ID", ""),
+        "activePartyID": os.environ.get("GUL_PGS_PARTY_ID", ""),
+    }
+    if _PGS_ROLES:
+        # Array of Strings, never a serialized token: these legs are plain JSON and the client
+        # runs Array.indexOf("broadcaster") / a contains() over it.
+        user["roles"] = list(_PGS_ROLES)
+    if next_stamp is not None:
+        # keep the watcher's field order (cursor first) so the served bytes do not change
+        user = dict(update_stamp=next_stamp, **user)
+    return user
 
 
 def watcher_model(resource, next_stamp):
@@ -1503,24 +1532,20 @@ class Handler(BaseHTTPRequestHandler):
                 self._reply(json.dumps({WATCH_RESOURCE_KEYS[resource]: [model]}).encode(),
                             ctype="application/json")
                 return
-            ident = current_identity()
-            iid = ident["iid"]
-            user = {
-                "update_stamp": next_stamp,
-                "id": iid,
-                "playerIID": iid,
-                "accountID": ident["accountID"],
-                "displayName": ident["name"],
-                "provider": "twitch",
-                "providerString": "twitch",
-                "active_party": os.environ.get("GUL_PGS_PARTY_ID", ""),
-                "activePartyID": os.environ.get("GUL_PGS_PARTY_ID", ""),
-            }
-            if _PGS_ROLES:
-                # Array of Strings, never a serialized token: this leg is plain JSON and the client
-                # runs Array.indexOf("broadcaster") over it.
-                user["roles"] = list(_PGS_ROLES)
-            slog(f"    (user watcher {p} -> users[{iid}] stamp={next_stamp})")
+            user = user_record(next_stamp)
+            slog(f"    (user watcher {p} -> users[{user['id']}] stamp={next_stamp})")
+            self._reply(json.dumps({"users": [user]}).encode(), ctype="application/json")
+            return
+        if _USER_RESOURCE.search(p):
+            # `LoggedInPlayer.verifyWithPGS` issues a PGS `get("user", "GET")`; its continuation is
+            # the handler that starts the user watcher and, when users[0].roles contains
+            # `broadcaster`, the channel watcher. So the role has to ride this reply, not only the
+            # watcher's. Unknown legs used to fall through to `{}`, which reads as a malformed
+            # response at the continuation (`0x140d45b94`).
+            user = user_record()
+            roles = ",".join(user.get("roles", []))
+            slog(f"    (user resource {p!r} -> users[{user['id']}]"
+                 + (f" roles={roles}" if roles else "") + ")")
             self._reply(json.dumps({"users": [user]}).encode(), ctype="application/json")
             return
         if "/polls/create" in p:

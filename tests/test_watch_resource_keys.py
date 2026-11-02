@@ -115,5 +115,56 @@ class ResourceWatcherTest(unittest.TestCase):
         self.assertIsNotNone(body.get("votes"), body)
 
 
+class UserResourceTest(unittest.TestCase):
+    """`verifyWithPGS` GETs the `user` resource, and its continuation is the channel-watcher gate.
+
+    The handler reads `users[0]` and then a `roles` array containing `broadcaster`; unknown legs used to
+    fall through to `{}`, which is the malformed-response path. These pin the resource GET separately
+    from the long-poll, and pin that both legs describe the same identity.
+    """
+
+    def _server(self, extra_env=None):
+        server = base.MockStartSessionServer(extra_env or {})
+        self.addCleanup(server.close)
+        return server
+
+    def _get(self, server, path):
+        url = "http://127.0.0.1:%d%s" % (server.port, path)
+        with urllib.request.urlopen(url, timeout=10) as response:
+            return json.loads(response.read().decode("utf-8"))
+
+    def test_the_user_resource_serves_a_users_array(self):
+        server = self._server()
+        body = self._get(server, "/user")
+        self.assertEqual(list(body), ["users"], body)
+        self.assertIsInstance(body["users"], list, body)
+        self.assertTrue(body["users"], body)
+        self.assertIn("id", body["users"][0], body)
+
+    def test_the_user_resource_carries_the_broadcaster_role_when_asked(self):
+        # This is the value the channel-watcher gate tests, so it has to be on this reply too.
+        server = self._server({"GUL_PGS_ROLES": "broadcaster"})
+        body = self._get(server, "/user")
+        self.assertEqual(body["users"][0].get("roles"), ["broadcaster"], body)
+
+    def test_no_roles_key_when_the_knob_is_unset(self):
+        server = self._server()
+        self.assertNotIn("roles", self._get(server, "/user")["users"][0])
+
+    def test_a_trailing_slash_and_an_app_prefix_still_match(self):
+        server = self._server()
+        for path in ("/user/", "/games/streamline/user"):
+            with self.subTest(path=path):
+                self.assertIn("users", self._get(server, path))
+
+    def test_the_resource_and_the_watcher_describe_the_same_identity(self):
+        server = self._server()
+        resource = self._get(server, "/user")["users"][0]
+        watched = self._get(server, "/users/devuser/updates/1")["users"][0]
+        for field in ("id", "playerIID", "accountID", "displayName"):
+            self.assertEqual(resource[field], watched[field], field)
+        self.assertNotIn("update_stamp", resource, "the resource GET carries no long-poll cursor")
+
+
 if __name__ == "__main__":
     unittest.main()
