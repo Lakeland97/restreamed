@@ -398,6 +398,24 @@ def handshake_context():
     return merged
 
 
+def player_session_record():
+    """Reply for `loadPlayerFromSession`: the handshake config plus this player's own record.
+
+    `LoggedInPlayer.loadPlayerFromAppServer` copies `returnVal.pgsToken` into its own field at
+    `+0x20` and only *then* calls `verifyWithPGS`, which returns before issuing its `user` GET when
+    that token is empty (`0x140D4889B`). The handshake config alone carries no token, so answering
+    this op with the config left the chain stuck at its first step.
+    """
+    record = dict(HANDSHAKE)
+    dynamic = session_context()
+    for name in ("displayName", "playerIID", "accountID", "pgsToken", "accounts", "m_accounts",
+                 "appAccountID", "pgsPlayerID", "pgsPlayerToken", "playerSessionID",
+                 "gameSessionID", "provider", "providerString"):
+        if name in dynamic:
+            record[name] = dynamic[name]
+    return record
+
+
 def pgs_party():
     ident = current_identity()
     party_id = os.environ.get("GUL_PGS_PARTY_ID", "p1")
@@ -1148,7 +1166,7 @@ OP_REPLIES = {
     # they share the same branch-B reply machinery as startSession.
     "startSessionForFakePlayerID": lambda: _dsur(handshake_context()),
     "loadPlayerFromFakePlayerID": lambda: _dsur(handshake_context()),
-    "loadPlayerFromSession": lambda: _dsur(handshake_context()),
+    "loadPlayerFromSession": lambda: _dsur(player_session_record()),
     # UI-free autojoin: -RunURL=<value> reaches processUrl; tag 0 (UJoinGame) makes the
     # client ClientTravel to the host below. See runtime/PROCESSURL_JOIN.md.
     "processUrl": process_url_join_reply,
