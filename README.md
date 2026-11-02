@@ -118,7 +118,9 @@ not through the original matchmaking or a dedicated server.
 Next:
 
 - **Steer the mod a match applies.** The game already chooses and applies catalogue mods by itself; the
-  local rotation is served but not yet fed in. This is the one piece of the stream layer still missing.
+  served rotation is not fed in, and the client's own stream layer cannot be started from a client build —
+  its entry operation lives on a private service the client never calls. Steering the game's own choice
+  is the open piece.
 - **A host that is not a player**, so a match does not depend on one person's client.
 - **The remaining vote legs**: wagers, bets and flash sales.
 
