@@ -90,7 +90,13 @@ SESSION_CTX = {
     "playerSessionID": "s1", "gameSessionID": "g1",
     "isHost": False, "hideHUD": False, "pgsExternalMode": False,
     "extraLoginOptions": {},
-    "lastPlayerLevel": 1, "lastXpIntoLevel": 0, "lastXpForNextLevel": 100,
+    # Progression. The client's home-UI builder sets its persisted `PlayedFirstQuickMatch` flag when
+    # either progression getter reads > 1.0 or > 0 (0x14067E0F4-0x14067E156), and that flag is what
+    # binds the tutorial SKIP control — so a profile served with a level above 1 (or any XP inside a
+    # level) leaves the one-shot state on the next home build. The defaults keep a fresh profile.
+    "lastPlayerLevel": int(os.environ.get("GUL_PLAYER_LEVEL", "1")),
+    "lastXpIntoLevel": int(os.environ.get("GUL_PLAYER_XP", "0")),
+    "lastXpForNextLevel": int(os.environ.get("GUL_PLAYER_XP_NEXT", "100")),
 }
 
 # The party payload is one of the few web legs the client fetches, and a party carries its members'
@@ -410,7 +416,8 @@ def player_session_record():
     dynamic = session_context()
     for name in ("displayName", "playerIID", "accountID", "pgsToken", "accounts", "m_accounts",
                  "appAccountID", "pgsPlayerID", "pgsPlayerToken", "playerSessionID",
-                 "gameSessionID", "provider", "providerString"):
+                 "gameSessionID", "provider", "providerString",
+                 "lastPlayerLevel", "lastXpIntoLevel", "lastXpForNextLevel"):
         if name in dynamic:
             record[name] = dynamic[name]
     return record
