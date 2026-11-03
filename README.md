@@ -154,8 +154,8 @@ session context) is the default. The knobs below exist for A/B-testing an altern
 | `GUL_COOKIES` | `0` | `1` issues the `hns_session` cookie so keyless legs keep the session identity (LAN tests with two clients) |
 | `GUL_PGS_PARTY_ID` | `p1` | party id reported by the PGS party legs |
 | `GUL_PGS_ROLES` | empty | comma-separated PGS roles on the user record; `broadcaster` makes NEW MATCH skip the stream sign-in and open the map picker |
-| `GUL_PLAYER_LEVEL` | `1` | `lastPlayerLevel` served on the player record. Above 1, the client's home-UI build marks the profile as having played and persists it, which is what binds the tutorial SKIP control |
-| `GUL_PLAYER_XP` | `0` | `lastXpIntoLevel`; any value above 0 has the same effect as a level above 1 |
+| `GUL_PLAYER_LEVEL` | `1` | `lastPlayerLevel` on the player record; the client writes these back from its own advancement component, so this is reported state, not a way to grant progress |
+| `GUL_PLAYER_XP` | `0` | `lastXpIntoLevel`, reported the same way |
 | `GUL_PLAYER_XP_NEXT` | `100` | `lastXpForNextLevel`, the denominator the client displays |
 | `GUL_OPEN_SERVER` | unset | `disabled` or `nofree` answer `getOpenServer` with those `OpenServerResponse` variants instead of `OSServer` |
 | `GUL_GAME_HOST` | `127.0.0.1` | the host a joining client is told to travel to; set it to the host's LAN address |

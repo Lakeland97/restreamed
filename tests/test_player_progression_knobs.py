@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""Serving a progressed profile: the offline lever that binds the tutorial SKIP control.
+"""The progression fields a server reports, and what they are not.
 
-The client's home-UI builder sets its persisted `PlayedFirstQuickMatch` flag when either progression
-getter reads > 1.0 or > 0 (`0x14067E0F4`-`0x14067E156`), and that flag is what binds SKIP. A fresh
-profile therefore keeps the one-shot state; a profile served with a level above 1, or with XP inside a
-level, does not.
+The client's home-UI builder sets its persisted `PlayedFirstQuickMatch` when the flag is already true or
+when the **local player's** `AdvancementComponent` reads a level above 1 or XP above 0
+(`0x14067E0F4`-`0x14067E156` via `0x140BD2BA0`/`0x140BD2E10`). The session record's `lastPlayerLevel` and
+`lastXpIntoLevel` are written *from* that component (`cachePlayerLevel`, `0x1407D5300`), so serving them is
+reporting state, **not** a way to grant progress — a server cannot raise them into the flag.
 
-These tests pin the server side of that lever: the three progression fields exist in the served session
-record, default to a fresh profile, and follow the knobs. Whether the client then writes the flag is a
-run-time question — this only guarantees the values actually reach the reply.
+These tests pin that reporting: the three fields exist on the served player record, default to a fresh
+profile, and follow the knobs.
 
 No client and no game: the mock runs on an ephemeral port.
 """
