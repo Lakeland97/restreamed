@@ -120,6 +120,45 @@ _PGS_ROLES = [item.strip() for item in os.environ.get("GUL_PGS_ROLES", "").split
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tools"))
 import haxe_ser  # noqa: E402
+
+
+class _ThreadRequestState:
+    """Request-scoped state for a threaded server.
+
+    `ThreadingHTTPServer` serves every request on its own thread, so request state cannot live in module
+    globals: one client's handler would read another client's body or cookie between its own reads and
+    writes. On a LAN test that shows up as two players sharing an identity, not as an error. Each thread
+    gets its own copy, seeded from the defaults.
+    """
+
+    def __init__(self, defaults=None):
+        self._defaults = dict(defaults or {})
+        self._local = threading.local()
+
+    def _data(self):
+        data = getattr(self._local, "data", None)
+        if data is None:
+            data = dict(self._defaults)
+            self._local.data = data
+        return data
+
+    def get(self, key, default=None):
+        return self._data().get(key, default)
+
+    def __getitem__(self, key):
+        return self._data()[key]
+
+    def __setitem__(self, key, value):
+        self._data()[key] = value
+
+    def __contains__(self, key):
+        return key in self._data()
+
+    def update(self, *args, **kwargs):
+        self._data().update(*args, **kwargs)
+
+    def clear(self):
+        self._local.data = dict(self._defaults)
 from haxe_ser import HxEnum  # noqa: E402
 
 LOG_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "runtime", "mock_appserver.log")
@@ -727,14 +766,22 @@ def _track_reply():
 # the reply belongs to, which matters because branch A delivers the session context (Success(returnVal))
 # while branch B drops it and delivers the inflated elements instead: the client may need the context on
 # the op that seeds its session datastore and the elements on the op that loads the player.
-CURRENT_OP = ""
+_CURRENT_OP = _ThreadRequestState({"op": ""})
+
+
+def _set_current_op(op):
+    _CURRENT_OP["op"] = op
+
+
+def _current_op():
+    return _CURRENT_OP.get("op", "")
 
 
 def _branch_b_for_current_op():
     ops = os.environ.get("GUL_DSUR_B_OPS")
     if ops is not None:
         wanted = [o.strip() for o in ops.split(",") if o.strip()]
-        return CURRENT_OP in wanted
+        return _current_op() in wanted
     return bool(os.environ.get("GUL_DSUR_B"))
 
 
@@ -757,7 +804,7 @@ def _dsur(payload):
     """
     direct_ops = os.environ.get("GUL_DSUR_DIRECT_OPS")
     if os.environ.get("GUL_DSUR_DIRECT") or (
-            direct_ops is not None and CURRENT_OP in [o.strip() for o in direct_ops.split(",") if o.strip()]):
+            direct_ops is not None and _current_op() in [o.strip() for o in direct_ops.split(",") if o.strip()]):
         # The payload itself as Success(value): what the local-player code reads its named fields off,
         # rather than a DSUR whose returnVal holds them. GUL_DSUR_DIRECT_VALUE=null sends a plain
         # Success(null), which is the differential test of whether the reply is processed at all before
@@ -1248,7 +1295,8 @@ OP_REPLIES = {
 # string); the session context it then reads carries sessionID/trackingID, and the mock has been sending
 # placeholders ("s1"/"t1") that the client rejects as enum names. GUL_CTX_ECHO_SESSION reflects the client's
 # own id back in those fields, which is what a server would do.
-_RAW_REQ = {"body": "", "cookie": "", "send_cookie": False, "identity_explicit": False}
+_RAW_REQ = _ThreadRequestState({"body": "", "cookie": "", "send_cookie": False,
+                                   "identity_explicit": False})
 _TRACK_PLAYER_PUSHED = False
 
 
@@ -1342,7 +1390,7 @@ class Handler(BaseHTTPRequestHandler):
         # route
         p = self.path.split("?")[0].rstrip("/")
         op = p.rsplit("/", 1)[-1] if p else ""
-        globals()["CURRENT_OP"] = op
+        _set_current_op(op)
         ident = _select_identity(p, op)
         if op == "startSession" and ident is not None:
             slog("    IDENTITY %s (playerIID=%s accountID=%s cookie=%s)"
