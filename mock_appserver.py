@@ -125,13 +125,11 @@ import haxe_ser  # noqa: E402
 class _ThreadRequestState:
     """Request-scoped state for a threaded server.
 
-    `ThreadingHTTPServer` serves every request on its own thread, and while `Handler._lock` currently
-    serialises the whole handler (which is what keeps the old module globals safe), that is a property of the
-    handler, not of this state. Keeping request state per thread makes the invariant explicit: narrowing the
-    lock to the shared mutations — identity maps, `_STREAMS`, the one-shot push flag — must not be able to
-    hand one client another client's body, cookie or current op. `test_a_long_poll_hold_delays_another_leg`
-    pins the serialisation, so a narrowing shows up as a failing test rather than as a silent identity
-    collision on a two-client LAN test.
+    `ThreadingHTTPServer` serves every request on its own thread, and requests run in parallel by default
+    (`GUL_SERIALIZE=1` restores the old handler-wide lock). Everything a request needs to answer *as itself*
+    therefore lives here: body, cookie, current op, and the resolved identity. Sharing any of them is not
+    theoretical — with a shared identity the concurrent-login test returns duplicate `playerIID`s, which on a
+    two-client LAN test presents as two players colliding rather than as an error.
     """
 
     def __init__(self, defaults=None):
@@ -284,6 +282,14 @@ _NAME_OVERRIDE = os.environ.get("GUL_NAME") or ""
 _JWT_OVERRIDE = os.environ.get("GUL_JWT") or ""
 
 _identity_lock = threading.Lock()
+_streams_lock = threading.Lock()
+_push_lock = threading.Lock()
+# The handler used to serialise every request to stop HTTP/1.1 pipelining from interleaving response
+# bodies. With HTTP/1.0 + `Connection: close` each request has its own socket, so that interleaving is
+# structurally impossible; keeping the lock only adds a cross-client stall (a held long-poll blocks every
+# other leg, up to GUL_USER_WATCH_HOLD). Parallel is the default; GUL_SERIALIZE=1 restores the old lock
+# for a client that is found to pipeline on one socket.
+_SERIALIZE_REQUESTS = os.environ.get("GUL_SERIALIZE", "0") != "0"
 _identities = {}          # lookup key -> identity
 _identity_by_iid = {}     # playerIID -> identity
 _identity_by_name = {}    # displayName -> identity
@@ -371,6 +377,10 @@ def party_members(window=None):
 
 
 def current_identity():
+    identity = _RAW_REQ.get("identity")
+    if identity is not None:
+        _note_party_member(identity)
+        return identity
     if CURRENT_IDENTITY is not None:
         _note_party_member(CURRENT_IDENTITY)
         return CURRENT_IDENTITY
@@ -609,15 +619,16 @@ def _rotation_for(channel):
 
 
 def _stream_for(channel):
-    if channel not in _STREAMS:
-        import stream_engine
-        _STREAMS[channel] = stream_engine.StreamSession(
-            channel,
-            seed=int(os.environ.get("GUL_STREAM_SEED", "1")),
-            window=int(os.environ.get("GUL_STREAM_WINDOW", "25")),
-            audience=int(os.environ.get("GUL_STREAM_AUDIENCE", "14")),
-        )
-    return _STREAMS[channel]
+    with _streams_lock:
+        if channel not in _STREAMS:
+            import stream_engine
+            _STREAMS[channel] = stream_engine.StreamSession(
+                channel,
+                seed=int(os.environ.get("GUL_STREAM_SEED", "1")),
+                window=int(os.environ.get("GUL_STREAM_WINDOW", "25")),
+                audience=int(os.environ.get("GUL_STREAM_AUDIENCE", "14")),
+            )
+        return _STREAMS[channel]
 
 
 def _cookie_token():
@@ -657,15 +668,14 @@ def _path_identity(path):
 
 def _select_identity(path, op):
     """Pick this request's identity from a client-sent key; never from the source IP."""
-    global CURRENT_IDENTITY
-    CURRENT_IDENTITY = None
+    _RAW_REQ["identity"] = None
     _RAW_REQ["send_cookie"] = False
     _RAW_REQ["identity_explicit"] = False
     if _IID_OVERRIDE or _NAME_OVERRIDE:
-        CURRENT_IDENTITY = _override_identity()
+        _RAW_REQ["identity"] = _override_identity()
         _RAW_REQ["send_cookie"] = True
         _RAW_REQ["identity_explicit"] = True
-        return CURRENT_IDENTITY
+        return _RAW_REQ["identity"]
 
     cookie = _cookie_token()
     token = _session_token()
@@ -678,7 +688,7 @@ def _select_identity(path, op):
     elif cookie:
         ident = _identity_for_key("cookie:" + cookie)
     if ident is not None:
-        CURRENT_IDENTITY = ident
+        _RAW_REQ["identity"] = ident
         _RAW_REQ["send_cookie"] = True
         _RAW_REQ["identity_explicit"] = True
         return ident
@@ -687,7 +697,7 @@ def _select_identity(path, op):
         # A login with no tracking id still gets a fresh identity; the cookie issued on
         # this reply is what carries it to the next request.
         ident = _identity_for_key("login:%d" % time.time_ns())
-        CURRENT_IDENTITY = ident
+        _RAW_REQ["identity"] = ident
         _RAW_REQ["send_cookie"] = True
         _RAW_REQ["identity_explicit"] = True
         return ident
@@ -698,7 +708,7 @@ def _select_identity(path, op):
             if len(_identity_by_iid) == 1:
                 ident = next(iter(_identity_by_iid.values()))
     if ident is not None:
-        CURRENT_IDENTITY = ident
+        _RAW_REQ["identity"] = ident
     return ident
 
 
@@ -727,13 +737,19 @@ def _track_reply():
     # post-LoggedIn tracking reply reaches onPlayerDataReceivedFromAppServer again, now
     # with a live pawn, and applies the same player entity.
     global _TRACK_PLAYER_PUSHED
-    if os.environ.get("GUL_TRACK_PUSH_PLAYER") == "1" and not _TRACK_PLAYER_PUSHED:
-        try:
-            body = urllib.parse.unquote_plus(_RAW_REQ.get("body", ""))
-        except Exception:
-            body = ""
-        if "LoggedIn" in body:
-            _TRACK_PLAYER_PUSHED = True
+    if os.environ.get("GUL_TRACK_PUSH_PLAYER") == "1":
+        with _push_lock:
+            fire = not _TRACK_PLAYER_PUSHED
+            if fire:
+                try:
+                    body = urllib.parse.unquote_plus(_RAW_REQ.get("body", ""))
+                except Exception:
+                    body = ""
+                if "LoggedIn" in body:
+                    _TRACK_PLAYER_PUSHED = True
+                else:
+                    fire = False
+        if fire:
             return _dsur(None)
     style = os.environ.get("GUL_TRACK_STYLE", "result")
     if style == "object":
@@ -1355,7 +1371,10 @@ class Handler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _handle(self):
-        with Handler._lock:
+        if _SERIALIZE_REQUESTS:
+            with Handler._lock:
+                self._handle_inner()
+        else:
             self._handle_inner()
 
     def _handle_inner(self):
@@ -1400,7 +1419,8 @@ class Handler(BaseHTTPRequestHandler):
                  % (ident["name"], ident["iid"], ident["accountID"], ident["cookie"]))
         if op == "startSession":
             # A new login re-arms the one-shot post-login entity push.
-            globals()["_TRACK_PLAYER_PUSHED"] = False
+            with _push_lock:
+                globals()["_TRACK_PLAYER_PUSHED"] = False
         if "/remoting" in p and "__x" in parsed:
             if op == "postTrackingInfo":
                 style = os.environ.get("GUL_TRACK_STYLE", "ok")

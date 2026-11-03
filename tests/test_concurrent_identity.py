@@ -106,40 +106,48 @@ class ConcurrentIdentityTest(unittest.TestCase):
             self.assertEqual(body["users"][0]["id"], iid, body)
 
 
-class RequestSerialisationTest(unittest.TestCase):
-    """The server serialises requests with a handler-wide lock; that is why the globals were safe.
+class RequestConcurrencyTest(unittest.TestCase):
+    """Requests run in parallel by default; `GUL_SERIALIZE=1` restores the old handler-wide lock.
 
-    Pinning it matters in both directions: per-request state is only isolated *because* of this lock, and a
-    long-poll hold therefore delays every other leg. If the lock is ever narrowed, this test fails and the
-    isolation tests become the ones that matter.
+    Parallel is what a two-client LAN test needs: a held watcher poll must not stall the other client's legs.
+    It is only safe because request state (body, cookie, current op, identity) is per-thread, which the
+    isolation and identity tests above pin. The knob exists for a client that turns out to pipeline on one
+    socket, where concurrent writes could interleave.
     """
 
-    def test_a_long_poll_hold_delays_another_leg(self):
+    @staticmethod
+    def _measure(env):
         import time as _time
 
-        server = base.MockStartSessionServer({"GUL_USER_WATCH_HOLD": "0.6"})
-        self.addCleanup(server.close)
-        started = []
+        server = base.MockStartSessionServer(dict(env, GUL_USER_WATCH_HOLD="0.6"))
+        try:
+            def watch():
+                url = "http://127.0.0.1:%d/users/devuser/updates/1" % server.port
+                with urllib.request.urlopen(url, timeout=30) as response:
+                    response.read()
 
-        def watch():
-            url = "http://127.0.0.1:%d/users/devuser/updates/1" % server.port
-            with urllib.request.urlopen(url, timeout=30) as response:
+            watch_thread = threading.Thread(target=watch)
+            watch_thread.start()
+            _time.sleep(0.1)          # the hold is definitely in progress
+            begin = _time.monotonic()
+            with urllib.request.urlopen("http://127.0.0.1:%d/auth/check" % server.port, timeout=30) as response:
                 response.read()
-            started.append(("watch", _time.monotonic()))
+            waited = _time.monotonic() - begin
+            watch_thread.join(30)
+            return waited
+        finally:
+            server.close()
 
-        watch_thread = threading.Thread(target=watch)
-        watch_thread.start()
-        _time.sleep(0.1)          # the hold is definitely in progress
-        begin = _time.monotonic()
-        with urllib.request.urlopen("http://127.0.0.1:%d/auth/check" % server.port, timeout=30) as response:
-            response.read()
-        waited = _time.monotonic() - begin
-        watch_thread.join(30)
+    def test_a_held_poll_does_not_stall_another_leg(self):
+        waited = self._measure({})
+        self.assertLess(waited, 0.35,
+                        "a held watcher poll stalled another leg (%.2fs): requests are being serialised"
+                        % waited)
 
+    def test_the_serialize_knob_restores_the_lock(self):
+        waited = self._measure({"GUL_SERIALIZE": "1"})
         self.assertGreaterEqual(waited, 0.35,
-                                "the second leg did not wait for the held poll (%.2fs): the handler lock "
-                                "no longer serialises requests, so per-request state needs its own check"
-                                % waited)
+                                "GUL_SERIALIZE=1 did not serialise (%.2fs)" % waited)
 
 
 class RequestStateIsolationTest(unittest.TestCase):
