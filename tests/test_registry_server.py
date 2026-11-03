@@ -1,96 +1,152 @@
 #!/usr/bin/env python3
-"""Community registry: list format, heartbeats, expiry and the HTTP surface."""
+"""Tests for `tools/registry_server.py`, the community-server registry.
+
+The registry is what the overlay's browser reads, so a silent format break would show up as an empty server
+list in the game rather than as an error. These tests pin the line format, the TTL, the heartbeat leg, and the
+probe behaviour — including that a probe drops a dead entry and keeps a live one.
+
+Stdlib only; no game and no network beyond loopback.
+"""
+
 import json
 import os
+import socket
 import sys
 import threading
 import unittest
+import urllib.error
 import urllib.request
 
-ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-sys.path.insert(0, ROOT)
+TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(TESTS_DIR)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
-import registry_server as reg  # noqa: E402
+try:
+    import registry_server as reg  # noqa: E402
+except ImportError:  # the public tree ships tools/, so this is only a guard
+    reg = None
 
 
-class ListFormatTest(unittest.TestCase):
-    def test_parse_minimal(self):
-        e = reg.parse_line("Alpha|127.0.0.1:7777")
-        self.assertEqual(e, {"name": "Alpha", "host": "127.0.0.1", "port": 7777,
-                             "players": 0, "max": 0})
+class FakeClock:
+    def __init__(self, start=1000.0):
+        self.now = start
 
-    def test_parse_counts_round_trip(self):
-        line = "Lab Server|10.0.0.5:7777|3|16"
-        e = reg.parse_line(line)
-        self.assertEqual((e["players"], e["max"]), (3, 16))
-        self.assertEqual(reg.format_line(e), line)
-
-    def test_rejects_garbage(self):
-        for bad in ("", "no-separator", "|1.2.3.4:7777", "name|nohost", "name|host:port"):
-            self.assertIsNone(reg.parse_line(bad), bad)
+    def __call__(self):
+        return self.now
 
 
-class RegistryTest(unittest.TestCase):
-    def test_upsert_and_text(self):
-        r = reg.Registry()
-        r.upsert(reg.parse_line("Alpha|127.0.0.1:7777|1|8"))
-        r.upsert(reg.parse_line("Beta|127.0.0.2:7777"))
-        self.assertEqual(r.text(), "Alpha|127.0.0.1:7777|1|8\nBeta|127.0.0.2:7777\n")
+@unittest.skipUnless(reg is not None, "registry_server is not in this tree")
+class RegistryModelTest(unittest.TestCase):
+    def test_a_line_round_trips(self):
+        entry = {"name": "Lab", "host": "10.0.0.5", "port": 7777, "players": 2, "max": 4}
+        parsed = reg.parse_line(reg.format_line(entry))
+        self.assertEqual(parsed, entry)
 
-    def test_upsert_same_address_updates(self):
-        r = reg.Registry()
-        r.upsert(reg.parse_line("Alpha|127.0.0.1:7777|1|8"))
-        r.upsert(reg.parse_line("Alpha|127.0.0.1:7777|4|8"))
-        self.assertEqual(len(r.live()), 1)
-        self.assertEqual(r.live()[0]["players"], 4)
+    def test_a_line_without_a_max_keeps_the_players_off(self):
+        # Old two-field lines are still valid and must not gain a phantom count.
+        self.assertEqual(reg.format_line({"name": "Lab", "host": "h", "port": 1, "players": 3, "max": 0}),
+                         "Lab|h:1")
 
-    def test_expiry_drops_stale(self):
-        now = [1000.0]
-        r = reg.Registry(ttl=10, clock=lambda: now[0])
-        r.upsert(reg.parse_line("Alpha|127.0.0.1:7777"))
-        now[0] += 11
-        self.assertEqual(r.expire(), 1)
-        self.assertEqual(r.live(), [])
+    def test_malformed_lines_are_rejected_rather_than_half_parsed(self):
+        for line in ("", "no-pipe", "name|nohostport", "name|host:port", "|host:1"):
+            with self.subTest(line=line):
+                self.assertIsNone(reg.parse_line(line), line)
+
+    def test_ttl_expiry_uses_the_injected_clock(self):
+        clock = FakeClock()
+        registry = reg.Registry(ttl=10.0, clock=clock)
+        registry.upsert({"name": "A", "host": "h", "port": 1})
+        clock.now += 5
+        self.assertEqual(registry.expire(), 0)
+        clock.now += 6
+        self.assertEqual(registry.expire(), 1)
+        self.assertEqual(registry.live(), [])
+
+    def test_upsert_refreshes_an_existing_endpoint_rather_than_duplicating_it(self):
+        clock = FakeClock()
+        registry = reg.Registry(ttl=10.0, clock=clock)
+        registry.upsert({"name": "A", "host": "h", "port": 1, "players": 1})
+        clock.now += 5
+        registry.upsert({"name": "A2", "host": "h", "port": 1, "players": 2})
+        self.assertEqual(len(registry.live()), 1)
+        self.assertEqual(registry.live()[0]["name"], "A2")
+        clock.now += 6
+        self.assertEqual(registry.expire(), 0, "the refresh must have restarted the TTL")
+
+    def test_the_list_is_sorted_case_insensitively(self):
+        registry = reg.Registry()
+        for name in ("zeta", "Alpha", "beta"):
+            registry.upsert({"name": name, "host": name, "port": 1})
+        self.assertEqual([entry["name"] for entry in registry.live()], ["Alpha", "beta", "zeta"])
 
 
-class HttpTest(unittest.TestCase):
-    def setUp(self):
-        self.registry = reg.Registry()
-        self.httpd = reg.serve(self.registry, "127.0.0.1", 0, probe_enabled=False)
-        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
-        self.thread.start()
-        self.base = "http://127.0.0.1:%d" % self.httpd.server_address[1]
+@unittest.skipUnless(reg is not None, "registry_server is not in this tree")
+class RegistryHTTPTest(unittest.TestCase):
+    def _serve(self, registry, probe_enabled=False):
+        httpd = reg.serve(registry, "127.0.0.1", 0, probe_enabled)
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        self.addCleanup(httpd.server_close)
+        self.addCleanup(httpd.shutdown)
+        return "http://127.0.0.1:%d" % httpd.server_port
 
-    def tearDown(self):
-        self.httpd.shutdown()
-        self.httpd.server_close()
-        self.thread.join(timeout=2)
+    def _get(self, base, path="/servers.txt"):
+        with urllib.request.urlopen(base + path, timeout=10) as response:
+            return response.status, response.read().decode("utf-8")
 
-    def get(self, path):
-        with urllib.request.urlopen(self.base + path, timeout=3) as r:
-            return r.status, r.read().decode()
+    def _post(self, base, payload, path="/heartbeat"):
+        request = urllib.request.Request(
+            base + path, data=json.dumps(payload).encode(), method="POST",
+            headers={"Content-Type": "application/json"})
+        with urllib.request.urlopen(request, timeout=10) as response:
+            return response.status, response.read().decode("utf-8")
 
-    def test_get_servers(self):
-        self.registry.upsert(reg.parse_line("Alpha|127.0.0.1:7777|2|8"))
-        status, body = self.get("/servers.txt")
+    def test_a_heartbeat_shows_up_in_the_list(self):
+        registry = reg.Registry()
+        base = self._serve(registry)
+        status, body = self._post(base, {"name": "Lab", "host": "127.0.0.1", "port": 7777,
+                                         "players": 1, "max": 4})
         self.assertEqual(status, 200)
-        self.assertEqual(body, "Alpha|127.0.0.1:7777|2|8\n")
+        self.assertEqual(body.strip(), "ok")
+        status, listing = self._get(base)
+        self.assertEqual(status, 200)
+        self.assertEqual(listing.strip(), "Lab|127.0.0.1:7777|1|4")
 
-    def test_heartbeat_adds_entry(self):
-        payload = json.dumps({"name": "Beta", "host": "127.0.0.9", "port": 7777,
-                              "players": 1, "max": 4}).encode()
-        req = urllib.request.Request(self.base + "/heartbeat", data=payload, method="POST")
-        with urllib.request.urlopen(req, timeout=3) as r:
-            self.assertEqual(r.status, 200)
-        _, body = self.get("/servers.txt")
-        self.assertEqual(body, "Beta|127.0.0.9:7777|1|4\n")
+    def test_a_bad_heartbeat_is_rejected_not_stored(self):
+        registry = reg.Registry()
+        base = self._serve(registry)
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self._post(base, {"name": "Lab"})
+        self.assertEqual(caught.exception.code, 400)
+        self.assertEqual(registry.live(), [])
 
-    def test_bad_heartbeat(self):
-        req = urllib.request.Request(self.base + "/heartbeat", data=b"{}", method="POST")
-        with self.assertRaises(urllib.error.HTTPError) as ctx:
-            urllib.request.urlopen(req, timeout=3)
-        self.assertEqual(ctx.exception.code, 400)
+    def test_an_unknown_path_is_404(self):
+        base = self._serve(reg.Registry())
+        with self.assertRaises(urllib.error.HTTPError) as caught:
+            self._get(base, "/nope")
+        self.assertEqual(caught.exception.code, 404)
+
+    def test_probing_drops_a_dead_entry_and_keeps_a_live_one(self):
+        # One real listener (this test's own socket) and one closed port.
+        listener = socket.socket()
+        listener.bind(("127.0.0.1", 0))
+        listener.listen(1)
+        self.addCleanup(listener.close)
+        live_port = listener.getsockname()[1]
+
+        dead = socket.socket()
+        dead.bind(("127.0.0.1", 0))
+        dead_port = dead.getsockname()[1]
+        dead.close()
+
+        registry = reg.Registry()
+        registry.upsert({"name": "Live", "host": "127.0.0.1", "port": live_port})
+        registry.upsert({"name": "Dead", "host": "127.0.0.1", "port": dead_port})
+        base = self._serve(registry, probe_enabled=True)
+        _, listing = self._get(base)
+        self.assertIn("Live", listing)
+        self.assertNotIn("Dead", listing)
+        self.assertEqual([entry["name"] for entry in registry.live()], ["Live"])
 
 
 if __name__ == "__main__":
