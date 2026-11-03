@@ -284,6 +284,7 @@ _JWT_OVERRIDE = os.environ.get("GUL_JWT") or ""
 _identity_lock = threading.Lock()
 _streams_lock = threading.Lock()
 _push_lock = threading.Lock()
+_log_lock = threading.Lock()
 # The handler used to serialise every request to stop HTTP/1.1 pipelining from interleaving response
 # bodies. With HTTP/1.0 + `Connection: close` each request has its own socket, so that interleaving is
 # structurally impossible; keeping the lock only adds a cross-client stall (a held long-poll blocks every
@@ -611,11 +612,12 @@ _ROTATIONS = {}
 
 
 def _rotation_for(channel):
-    if channel not in _ROTATIONS:
-        import stream_engine
-        _ROTATIONS[channel] = stream_engine.Rotation(
-            seed=int(os.environ.get("GUL_ROTATION_SEED", "1")))
-    return _ROTATIONS[channel]
+    with _streams_lock:
+        if channel not in _ROTATIONS:
+            import stream_engine
+            _ROTATIONS[channel] = stream_engine.Rotation(
+                seed=int(os.environ.get("GUL_ROTATION_SEED", "1")))
+        return _ROTATIONS[channel]
 
 
 def _stream_for(channel):
@@ -1325,11 +1327,17 @@ def client_session_id():
 
 
 def slog(line):
+    """One line, one lock.
+
+    Requests run in parallel now, and the log is the lab's evidence: the coverage and watcher judges read
+    these markers. Two threads interleaving a buffered write can split a marker across two lines, which
+    would quietly make a judge miss a leg, so the write is serialised.
+    """
     path = os.environ.get("GUL_LOG", LOG_PATH)
     parent = os.path.dirname(path)
     if parent and not os.path.isdir(parent):
         os.makedirs(parent, exist_ok=True)
-    with open(path, "a") as f:
+    with _log_lock, open(path, "a") as f:
         f.write(line + "\n")
 
 
