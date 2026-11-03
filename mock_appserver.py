@@ -125,10 +125,13 @@ import haxe_ser  # noqa: E402
 class _ThreadRequestState:
     """Request-scoped state for a threaded server.
 
-    `ThreadingHTTPServer` serves every request on its own thread, so request state cannot live in module
-    globals: one client's handler would read another client's body or cookie between its own reads and
-    writes. On a LAN test that shows up as two players sharing an identity, not as an error. Each thread
-    gets its own copy, seeded from the defaults.
+    `ThreadingHTTPServer` serves every request on its own thread, and while `Handler._lock` currently
+    serialises the whole handler (which is what keeps the old module globals safe), that is a property of the
+    handler, not of this state. Keeping request state per thread makes the invariant explicit: narrowing the
+    lock to the shared mutations — identity maps, `_STREAMS`, the one-shot push flag — must not be able to
+    hand one client another client's body, cookie or current op. `test_a_long_poll_hold_delays_another_leg`
+    pins the serialisation, so a narrowing shows up as a failing test rather than as a silent identity
+    collision on a two-client LAN test.
     """
 
     def __init__(self, defaults=None):

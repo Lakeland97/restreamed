@@ -106,6 +106,42 @@ class ConcurrentIdentityTest(unittest.TestCase):
             self.assertEqual(body["users"][0]["id"], iid, body)
 
 
+class RequestSerialisationTest(unittest.TestCase):
+    """The server serialises requests with a handler-wide lock; that is why the globals were safe.
+
+    Pinning it matters in both directions: per-request state is only isolated *because* of this lock, and a
+    long-poll hold therefore delays every other leg. If the lock is ever narrowed, this test fails and the
+    isolation tests become the ones that matter.
+    """
+
+    def test_a_long_poll_hold_delays_another_leg(self):
+        import time as _time
+
+        server = base.MockStartSessionServer({"GUL_USER_WATCH_HOLD": "0.6"})
+        self.addCleanup(server.close)
+        started = []
+
+        def watch():
+            url = "http://127.0.0.1:%d/users/devuser/updates/1" % server.port
+            with urllib.request.urlopen(url, timeout=30) as response:
+                response.read()
+            started.append(("watch", _time.monotonic()))
+
+        watch_thread = threading.Thread(target=watch)
+        watch_thread.start()
+        _time.sleep(0.1)          # the hold is definitely in progress
+        begin = _time.monotonic()
+        with urllib.request.urlopen("http://127.0.0.1:%d/auth/check" % server.port, timeout=30) as response:
+            response.read()
+        waited = _time.monotonic() - begin
+        watch_thread.join(30)
+
+        self.assertGreaterEqual(waited, 0.35,
+                                "the second leg did not wait for the held poll (%.2fs): the handler lock "
+                                "no longer serialises requests, so per-request state needs its own check"
+                                % waited)
+
+
 class RequestStateIsolationTest(unittest.TestCase):
     """The mechanism behind the tests above: request state must be per-thread, not a module global.
 
