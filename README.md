@@ -258,6 +258,10 @@ Layout
                              reads, accepts heartbeats, and TCP-probes entries so dead
                              servers drop out.
 
+  tools/verify_server.py     Conformance check for any server implementation: sends the
+                             legs the client really sends and asserts the shapes it
+                             parses (`--base http://host:port`, exit 0 when all pass).
+
   tools/patch_client.py      Patch your own Streamline.exe into the working builds:
                              the login/admission byte patches, the identity cave, the
                              post-match loop and the round timer. Verifies every site
