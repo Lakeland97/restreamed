@@ -85,12 +85,12 @@ Status
 ### What does not work
 
 - **Steering which gameplay mod a match uses.** Mod-like changes do appear live in a listen match, but the
-  measured state says they are not catalogue mods: the replicated and scripted mod arrays stay empty while
-  they run, the apply hop's four known entries are the vote layer, the flash-sale manager, an uncalled
-  wrapper and a cheat command, and the effects match the game modes' own named rules (`toggleLavaFloor`,
-  `toggleBoostBonus`, `toggleHidePoints`, the `nerfed` / `killerGhosts` / `ghostBusters` switches) rather
-  than `game_mod_*` templates. Applying a catalogue mod needs an in-process call. What the layer was and
-  what a local replacement has to provide:
+  measurement and the UI disagree: the mod arrays read empty during them, while the HUD entry that shows a
+  mod draws a catalogue name and description from the mod's own component — so a card implies a catalogue mod
+  in state. The apply hop's four known entries (vote layer, flash-sale manager, an uncalled wrapper, a cheat
+  command) none run at match start either. Applying a catalogue mod deliberately needs an in-process call;
+  explaining the observed ones needs a run that reads the arrays and the screen together. What the layer was
+  and what a local replacement has to provide:
   [StreamLayer](https://github.com/Lakeland97/restreamed/wiki/StreamLayer).
 - A silent wardrobe selection for every item. With `all-cosmetics-equip` the slot pages open, a pick
   applies the item and it persists. An item the player owns applies with no dialog. An item outside the
