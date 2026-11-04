@@ -150,6 +150,18 @@ session context) is the default. The knobs below exist for A/B-testing an altern
 | `GUL_USER_POLL_DELAY` | `10` | user-watcher long-poll hold, seconds |
 | `GUL_USER_WATCH_HOLD` | the poll delay | explicit hold override for the user watcher |
 | `GUL_SERIALIZE` | `0` | `1` restores the handler-wide request lock. Requests run in parallel by default so a held watcher poll does not stall another client's legs |
+| `GUL_HEARTBEAT_SEC` | `30` | interval the mock reports on the client-heartbeat leg |
+| `GUL_PUBLIC_IP` | `127.0.0.1` | address returned by `getCurrentIP` |
+| `GUL_COOLDOWN` | `10` | `hostedAutojoinCooldownSecs` in the handshake config |
+| `GUL_SERVER_ENV` | `local` | `serverEnvironment` in the handshake config (`local`, `staging`, `prod`) |
+| `GUL_AUTH_ACCOUNTS` | `1` | `0` omits the account records from the auth-check reply |
+| `GUL_PGS_ACCOUNTS` | `1` | `0` omits the account records from the party payload |
+| `GUL_PGS_PARTY_WINDOW` | `300` | seconds an identity stays in the party member list |
+| `GUL_PGS_PARTY_OWNER_RECORD` | unset | `1` serves the party owner as a record instead of a bare id |
+| `GUL_ACCOUNT_STREAMOTE` | unset | `1` marks the served account as a Streamote account |
+| `GUL_FAKE_PLAYER` | unset | sets `fakePlayerID` in the handshake config, selecting the fake-player login path |
+| `GUL_JWT` | dev token | overrides the PGS token every identity is issued |
+| `GUL_RCONF` | unset | `1` answers `/remoting-config` with a JSON session context instead of `{}` |
 | `GUL_MAX_BODY` | `8388608` | largest declared request body; anything above is refused with 413 before it is read |
 | `GUL_REQUEST_TIMEOUT` | `120` | seconds a connection may stay silent before its thread is dropped; keep it above the long-poll hold |
 | `GUL_USER_WATCH_STAMP` | `advance` | `echo` returns the requested stamp, so no update is delivered |
