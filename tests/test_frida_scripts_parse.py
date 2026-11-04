@@ -35,6 +35,7 @@ BUILDERS = {
     "frida_enter_tutorial": (),
     "frida_mod_banner_watch": (60,),
     "frida_prop_offset": ("ActiveModsRep",),
+    "frida_mod_truth": (60,),
 }
 
 # A `%X`/`%d`/`%s` left in a template is a format placeholder the tool fills at attach time; substituting a
@@ -90,7 +91,10 @@ class FridaScriptParseTest(unittest.TestCase):
                 except Exception as exc:  # noqa: BLE001 - a missing dependency is a skip, not a failure
                     skipped.append((module_name, str(exc)))
                     continue
-                script = render(module)
+                try:
+                    script = render(module)
+                except TypeError as exc:
+                    self.fail("%s: its builder needs arguments — add them to BUILDERS (%s)" % (module_name, exc))
                 if script is None:
                     skipped.append((module_name, "no build_script and no JS template"))
                     continue
