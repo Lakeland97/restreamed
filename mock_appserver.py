@@ -1347,6 +1347,13 @@ class Handler(BaseHTTPRequestHandler):
     # \0 at position 615" bug — 615 bytes of mixed streams before a NUL).
     protocol_version = "HTTP/1.0"  # the era when extraction demonstrably worked
     _lock = threading.Lock()
+    # A client that opens a connection and stops talking would otherwise hold its thread for ever: requests
+    # run in parallel now, so one stuck socket is one leaked thread. Must exceed the longest deliberate hold
+    # (GUL_USER_WATCH_HOLD, 10 s by default) with headroom.
+    timeout = int(os.environ.get("GUL_REQUEST_TIMEOUT", "120"))
+    # The client's bodies are a few hundred bytes; anything enormous is a mistake or a probe, and reading it
+    # into memory is the server's problem unless it is bounded.
+    MAX_BODY = int(os.environ.get("GUL_MAX_BODY", str(8 * 1024 * 1024)))
 
     def _reply(self, body: bytes, status=200, ctype="text/plain"):
         self.send_response(status)
@@ -1387,6 +1394,12 @@ class Handler(BaseHTTPRequestHandler):
 
     def _handle_inner(self):
         length = int(self.headers.get("Content-Length") or 0)
+        if length > Handler.MAX_BODY:
+            # Refuse before allocating: a "Content-Length: 999999999" from a broken or hostile client must not
+            # decide how much memory this process uses.
+            slog(f"    REFUSED body of {length} bytes (limit {Handler.MAX_BODY})")
+            self._reply(b"body too large\n", status=413)
+            return
         raw = self.rfile.read(length) if length else b""
         # Log the *request* body as well as the reply: the client serialises its own objects on the way out
         # (its session context among them, on the tracking calls), so its encoding of a field is ground truth
