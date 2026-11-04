@@ -85,10 +85,26 @@ class Pak:
     def __init__(self, path):
         self.path = path
         self.f = open(path, "rb")  # read-only; never written
-        self.f.seek(0, os.SEEK_END)
-        self.file_size = self.f.tell()
-        self._parse_footer()
-        self._load_index()
+        try:
+            self.f.seek(0, os.SEEK_END)
+            self.file_size = self.f.tell()
+            self._parse_footer()
+            self._load_index()
+        except Exception:
+            # A rejected pak must not leak its handle: the CLI exits, but library callers and tests do not.
+            self.f.close()
+            raise
+
+    def close(self):
+        if getattr(self, "f", None) is not None and not self.f.closed:
+            self.f.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc_info):
+        self.close()
+        return False
 
     # ---------------- footer ----------------
     def _parse_footer(self):
