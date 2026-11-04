@@ -40,7 +40,7 @@ class Leg:
         self.detail = detail
 
 
-def _request(base, path, data=None, headers=None):
+def _request(base, path, data=None, headers=None, timeout=10):
     url = base.rstrip("/") + path
     request = urllib.request.Request(
         url,
@@ -48,7 +48,7 @@ def _request(base, path, data=None, headers=None):
         method="POST" if data is not None else "GET",
         headers={"Content-Type": "application/x-www-form-urlencoded", **(headers or {})},
     )
-    with urllib.request.urlopen(request, timeout=10) as response:
+    with urllib.request.urlopen(request, timeout=timeout) as response:
         return response.status, response.read()
 
 
@@ -95,9 +95,9 @@ def check_auth(base):
     return Leg("auth/check", True, "body token present")
 
 
-def _users_leg(base, path, label, require_stamp):
+def _users_leg(base, path, label, require_stamp, timeout=10):
     try:
-        status, body = _request(base, path)
+        status, body = _request(base, path, timeout=timeout)
     except Exception as exc:  # noqa: BLE001
         return Leg(label, False, "request failed: %s" % exc)
     if status != 200:
@@ -121,12 +121,18 @@ def check_user_resource(base):
     return _users_leg(base, "/user", "user resource", require_stamp=False)
 
 
+# A watcher leg is a deliberate long poll: a server with a 10 s hold would fail a 10 s client timeout by a
+# hair. Thirty-five seconds clears the default hold with room for a slow host.
+WATCH_TIMEOUT = 35
+
+
 def check_user_watch(base):
-    first = _users_leg(base, "/users/verify/updates/1", "user watcher", require_stamp=True)
+    first = _users_leg(base, "/users/verify/updates/1", "user watcher", require_stamp=True,
+                       timeout=WATCH_TIMEOUT)
     if not first.ok:
         return first
     try:
-        status, body = _request(base, "/users/verify/updates/1")
+        status, body = _request(base, "/users/verify/updates/1", timeout=WATCH_TIMEOUT)
         payload = json.loads(body.decode("utf-8"))
         stamp = payload["users"][0]["update_stamp"]
     except Exception as exc:  # noqa: BLE001

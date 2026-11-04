@@ -1356,6 +1356,15 @@ class Handler(BaseHTTPRequestHandler):
     MAX_BODY = int(os.environ.get("GUL_MAX_BODY", str(8 * 1024 * 1024)))
 
     def _reply(self, body: bytes, status=200, ctype="text/plain"):
+        # A client that gives up (a poll cancelled, a probe killed) closes its socket while the reply is being
+        # written. That is normal here — the watcher long-poll is cancelled constantly — and it used to leave a
+        # full traceback in the service log for every occurrence (189 in one day), burying the evidence.
+        try:
+            self._reply_inner(body, status, ctype)
+        except (BrokenPipeError, ConnectionResetError) as exc:
+            slog(f"    client disconnected before the reply ({exc.__class__.__name__})")
+
+    def _reply_inner(self, body: bytes, status=200, ctype="text/plain"):
         self.send_response(status)
         self.send_header("Content-Type", ctype)
         if os.environ.get("GUL_NOCL", "0") == "0":
@@ -1393,14 +1402,22 @@ class Handler(BaseHTTPRequestHandler):
             self._handle_inner()
 
     def _handle_inner(self):
-        length = int(self.headers.get("Content-Length") or 0)
+        try:
+            length = int(self.headers.get("Content-Length") or 0)
+        except ValueError:
+            self._reply(b"bad Content-Length\n", status=400)
+            return
         if length > Handler.MAX_BODY:
             # Refuse before allocating: a "Content-Length: 999999999" from a broken or hostile client must not
             # decide how much memory this process uses.
             slog(f"    REFUSED body of {length} bytes (limit {Handler.MAX_BODY})")
             self._reply(b"body too large\n", status=413)
             return
-        raw = self.rfile.read(length) if length else b""
+        try:
+            raw = self.rfile.read(length) if length else b""
+        except (ConnectionResetError, TimeoutError) as exc:
+            slog(f"    client vanished mid-request ({exc.__class__.__name__})")
+            return
         # Log the *request* body as well as the reply: the client serialises its own objects on the way out
         # (its session context among them, on the tracking calls), so its encoding of a field is ground truth
         # for the types it expects - the mock's replies only show what it is willing to send.

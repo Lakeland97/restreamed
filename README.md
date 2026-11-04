@@ -150,6 +150,8 @@ session context) is the default. The knobs below exist for A/B-testing an altern
 | `GUL_USER_POLL_DELAY` | `10` | user-watcher long-poll hold, seconds |
 | `GUL_USER_WATCH_HOLD` | the poll delay | explicit hold override for the user watcher |
 | `GUL_SERIALIZE` | `0` | `1` restores the handler-wide request lock. Requests run in parallel by default so a held watcher poll does not stall another client's legs |
+| `GUL_MAX_BODY` | `8388608` | largest declared request body; anything above is refused with 413 before it is read |
+| `GUL_REQUEST_TIMEOUT` | `120` | seconds a connection may stay silent before its thread is dropped; keep it above the long-poll hold |
 | `GUL_USER_WATCH_STAMP` | `advance` | `echo` returns the requested stamp, so no update is delivered |
 | `GUL_NAME_PREFIX` | `Player` | prefix for the auto-assigned display names (`Player1`, `Player2`, …) |
 | `GUL_IID` | auto | pin `playerIID` for every session (single-client tests) |
