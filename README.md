@@ -174,6 +174,7 @@ session context) is the default. The knobs below exist for A/B-testing an altern
 | `GUL_PLAYER_LEVEL` | `1` | `lastPlayerLevel` on the player record; the client writes these back from its own advancement component, so this is reported state, not a way to grant progress |
 | `GUL_PLAYER_XP` | `0` | `lastXpIntoLevel`, reported the same way |
 | `GUL_PLAYER_XP_NEXT` | `100` | `lastXpForNextLevel`, the denominator the client displays |
+| `GUL_DSUR_HX_INLINE_XP` | unset | serve the local player with an inline `AdvancementComponent` carrying this `xp`, plus an empty level list. The client reads progression from that component, so this is the only server-side way to make the home UI treat the profile as progressed; default-off, and a non-empty level list is untested |
 | `GUL_OPEN_SERVER` | unset | `disabled` or `nofree` answer `getOpenServer` with those `OpenServerResponse` variants instead of `OSServer` |
 | `GUL_GAME_HOST` | `127.0.0.1` | the host a joining client is told to travel to; set it to the host's LAN address |
 | `GUL_SERVER_IP` | unset | answer `getServerIp` with `SIServer{host, port, party, playerSession, gameSession}`; unset answers `SIHostNotConnected`. Endpoint fields come from `GUL_GAME_HOST`, `GUL_GAME_PORT`, `GUL_JOIN_PARTY`, `GUL_JOIN_SESSION`, `GUL_JOIN_GAMESESSION` |

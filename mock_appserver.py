@@ -812,6 +812,37 @@ def _branch_b_for_current_op():
 OP_CTX_OPS = lambda: [o.strip() for o in os.environ.get("GUL_OP_CTX_OPS", "").split(",") if o.strip()]
 
 
+def _inline_xp_reply(payload):
+    """The reply that serves the local player with a non-zero advancement `xp`.
+
+    A server cannot move the session record's progression — the client writes those fields *from* its own
+    component — but the entity graph is applied field by field by name, so an inline component instance is the
+    one server-side route to the home UI's flag condition (`PlayedFirstQuickMatch`, set when either progression
+    getter reads above 1.0 or above 0).
+
+    The component's declared order is `[xp, levelEntries, maxLevel]`, and `levelEntries` is served as an EMPTY
+    list rather than null: the reader walks it, so a null faults where the flag reads it, while an empty list
+    leaves the `xp > 0` arm to fire. The element shape of a non-empty list is unknown, so nothing here needs it.
+    """
+    import hxinflate
+    ent = hxinflate.Decl("model.entity.ModelEntity", custom=True)
+    adv = hxinflate.Decl("model.component.advancement.AdvancementComponent", custom=False,
+                         fields=["xp", "levelEntries", "maxLevel"])
+    adv_inst = hxinflate.Instance(
+        values=[int(os.environ["GUL_DSUR_HX_INLINE_XP"]),
+                json.loads(os.environ.get("GUL_DSUR_HX_INLINE_LEVELS", "[]")),
+                int(os.environ.get("GUL_DSUR_HX_INLINE_MAXLEVEL", "1"))],
+        decl=adv)
+    body = [_iid(), os.environ.get("GUL_IID_TEMPLATE", "player"), {}, None, None,
+            json.loads(os.environ.get("GUL_DSUR_HX_N6", '["x"]')), adv_inst]
+    body += [""] * int(os.environ.get("GUL_DSUR_HX_TAIL", "1"))
+    blob = hxinflate.type_cache([ent, adv], purpose="game")
+    ents = [hxinflate.object_stream(hxinflate.Instance(values=body, decl=ent), purpose="game")]
+    slog("    (inline AdvancementComponent: xp=%s levelEntries=%s)"
+         % (os.environ["GUL_DSUR_HX_INLINE_XP"], os.environ.get("GUL_DSUR_HX_INLINE_LEVELS", "[]")))
+    return haxe_ser.dsur_branch_b(payload, ents, blob, ())
+
+
 def _dsur(payload):
     """Reply for an appserver op: DSUR branch A normally, branch B when GUL_DSUR_B is set.
 
@@ -823,6 +854,9 @@ def _dsur(payload):
       GUL_DSUR_ENTITIES   JSON, what updatedEntities holds (only its LENGTH selects the branch)
       GUL_DSUR_BLOB_JSON  JSON, serialized into the entityTypeInfo string (the inflated payload)
     """
+    if os.environ.get("GUL_DSUR_HX_INLINE_XP"):
+        # One knob, one purpose: serve the inline-xp entity pair whatever else is configured.
+        return _inline_xp_reply(payload)
     direct_ops = os.environ.get("GUL_DSUR_DIRECT_OPS")
     if os.environ.get("GUL_DSUR_DIRECT") or (
             direct_ops is not None and _current_op() in [o.strip() for o in direct_ops.split(",") if o.strip()]):
