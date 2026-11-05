@@ -120,6 +120,18 @@ class PatchClientRoundTripTest(unittest.TestCase):
         self.assertEqual(verify.returncode, 0, verify.stdout + verify.stderr)
         self.assertIn("VERDICT: PASS", verify.stdout)
 
+        # A damaged cave body must be reported, not tolerated: --verify has to compare the stub itself, not just
+        # the hooks that jump to it.
+        tampered = os.path.join(self.work, "client-tampered.exe")
+        data = bytearray(patched)
+        data[cave.offset + 40] ^= 0xFF
+        with open(tampered, "wb") as handle:
+            handle.write(bytes(data))
+        damaged = self._run("--profile", "client", "--verify", tampered)
+        self.assertNotEqual(damaged.returncode, 0, damaged.stdout + damaged.stderr)
+        self.assertIn("VERDICT: FAIL", damaged.stdout)
+        self.assertIn(cave.name, damaged.stdout)
+
     def test_the_host_play_profile_maps_its_cave_sections(self):
         """The header half of the patcher: raising VirtualSize and setting MEM_EXECUTE for cave sections.
 
