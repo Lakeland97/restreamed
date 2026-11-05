@@ -82,6 +82,9 @@ def syntax_error(text):
 # error, so the parser above cannot see it — this check can.
 MODULE_CEILING = 0x4000000          # .text + .rdata + .data + .pdata span ~0x3E4A000 in the shipped image
 RVA_CONSTANT = re.compile(r"^(RVA_[A-Z0-9_]+)\s*=\s*0x([0-9A-Fa-f]+)", re.M)
+# A literal inside `base.add(...)` must be short enough to be an RVA. Eight hex digits is already suspicious in
+# this image (its whole span is under 0x4000000), and every real VA here starts 0x14.
+INLINE_ADD = re.compile(r"base\.add\(0x([0-9A-Fa-f]{8,})\)")
 
 
 class RvaRangeTest(unittest.TestCase):
@@ -97,6 +100,10 @@ class RvaRangeTest(unittest.TestCase):
                 with self.subTest(tool=name, constant=constant):
                     self.assertLess(int(value, 16), MODULE_CEILING,
                                     "%s: %s = 0x%s looks like a VA, not an RVA" % (name, constant, value))
+            for value in INLINE_ADD.findall(text):
+                with self.subTest(tool=name, inline=value):
+                    self.assertLess(int(value, 16), MODULE_CEILING,
+                                    "%s: base.add(0x%s) passes a full VA where an RVA belongs" % (name, value))
 
 
 @unittest.skipUnless(NODE or JSC, "no JavaScript engine to parse with")
