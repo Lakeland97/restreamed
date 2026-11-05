@@ -27,8 +27,10 @@ DEV = os.environ.get("FRIDA_DEV", "127.0.0.1:27042")
 # RVA_* values are offsets from the module base and are added to it in the script; a full VA here would
 # double the base and attach outside the module.
 RVA_SHOW_MOD = 0x56B4D0           # sl.ui.hud.AppliedModIndicator.showMod, VA 0x14056B4D0 (RVA, added to the module base)
-OFF_NAME = 0x18                   # what the banner reads for the title
-OFF_DESC = 0x20                   # ... and for the description line
+# See frida_mod_truth.py: the accessor bodies put `description`/`shortDescription` at +0x18/+0x20 as integers,
+# the name is a pointer at +0x00, and the catalogue-FName mapping is unverified — raw values are the datum.
+OFF_NAME = 0x18
+OFF_DESC = 0x20
 RVA_FNAME_CTOR = 0x12DC9B0        # same helper frida_mod_poll.py uses to resolve FName ids
 
 JS = r"""
