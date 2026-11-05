@@ -27,7 +27,7 @@ DEV = os.environ.get("FRIDA_DEV", "127.0.0.1:27042")
 
 RVA_CLASS_CACHE = 0x3BBF640       # hx class cache for SLGameState (frida_mod_poll.py)
 RVA_FNAME_CTOR = 0x12DC9B0        # FName constructor helper
-RVA_SHOW_MOD = 0x14056B4D0        # sl.ui.hud.AppliedModIndicator.showMod(object)
+RVA_SHOW_MOD = 0x56B4D0           # sl.ui.hud.AppliedModIndicator.showMod, VA 0x14056B4D0 (RVA, added to the module base)
 OFF_NAME = 0x18                   # what the banner reads for its title
 OFF_DESC = 0x20                   # ... and for the description line
 ARRAY_OFFSETS = (0x480, 0x490, 0x4A0)

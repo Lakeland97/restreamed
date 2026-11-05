@@ -24,8 +24,9 @@ import time
 
 DEV = os.environ.get("FRIDA_DEV", "127.0.0.1:27042")
 
-# Image-relative addresses (file offsets already resolved against the shipped exe).
-RVA_SHOW_MOD = 0x14056B4D0        # sl.ui.hud.AppliedModIndicator.showMod(object)
+# RVA_* values are offsets from the module base and are added to it in the script; a full VA here would
+# double the base and attach outside the module.
+RVA_SHOW_MOD = 0x56B4D0           # sl.ui.hud.AppliedModIndicator.showMod, VA 0x14056B4D0 (RVA, added to the module base)
 OFF_NAME = 0x18                   # what the banner reads for the title
 OFF_DESC = 0x20                   # ... and for the description line
 RVA_FNAME_CTOR = 0x12DC9B0        # same helper frida_mod_poll.py uses to resolve FName ids

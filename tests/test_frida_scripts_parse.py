@@ -77,7 +77,31 @@ def syntax_error(text):
         os.unlink(path)
 
 
+# The module's own size is a hard ceiling for a module-relative address: RVAs are added to the module base in the
+# script, so a full VA stored in an RVA slot doubles the base and attaches outside the image. That is not a syntax
+# error, so the parser above cannot see it — this check can.
+MODULE_CEILING = 0x4000000          # .text + .rdata + .data + .pdata span ~0x3E4A000 in the shipped image
+RVA_CONSTANT = re.compile(r"^(RVA_[A-Z0-9_]+)\s*=\s*0x([0-9A-Fa-f]+)", re.M)
+
+
+class RvaRangeTest(unittest.TestCase):
+    def test_no_frida_tool_stores_a_full_va_in_an_rva_slot(self):
+        tools = [name for name in os.listdir(os.path.join(ROOT, "tools"))
+                 if name.startswith("frida_") and name.endswith(".py")]
+        self.assertTrue(tools, "no frida tools found")
+        for name in sorted(tools):
+            path = os.path.join(ROOT, "tools", name)
+            with open(path, "r", encoding="utf-8", errors="replace") as handle:
+                text = handle.read()
+            for constant, value in RVA_CONSTANT.findall(text):
+                with self.subTest(tool=name, constant=constant):
+                    self.assertLess(int(value, 16), MODULE_CEILING,
+                                    "%s: %s = 0x%s looks like a VA, not an RVA" % (name, constant, value))
+
+
 @unittest.skipUnless(NODE or JSC, "no JavaScript engine to parse with")
+
+
 class FridaScriptParseTest(unittest.TestCase):
     def test_every_frida_tool_renders_a_parseable_script(self):
         skipped = []
