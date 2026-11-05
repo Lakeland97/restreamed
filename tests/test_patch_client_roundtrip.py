@@ -187,6 +187,39 @@ class PatchClientRoundTripTest(unittest.TestCase):
         self.assertIn("already patched", result.stdout + result.stderr)
         self.assertFalse(os.path.exists(twice), "a refused patch still wrote an output file")
 
+    def test_add_and_drop_shape_a_profile(self):
+        """`--add`/`--drop` are user-facing, and adding a cave has to switch the section mapping on.
+
+        `host-min` carries no caves, so adding a whole cave group through the CLI exercises the derivation of
+        `maps_rdata_exec` for a custom profile — the part a user cannot see except as a crash if it is wrong.
+        """
+        custom = os.path.join(self.work, "custom.exe")
+        result = self._run("--profile", "host-min", "--add", "identity_cave", "--add", "identity_hook",
+                           "--add", "contestants_phase", "--in", self.src, "--out", custom)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        with open(custom, "rb") as handle:
+            patched = handle.read()
+        sections = {section.name: section for section in pc.sections(patched)}
+        self.assertEqual(sections[".rdata"].vsize, pc.CAVE_SECTIONS[".rdata"][1],
+                         "adding a cave through --add did not map its section")
+        self.assertTrue(int.from_bytes(patched[sections[".rdata"].header + 36:
+                                               sections[".rdata"].header + 40], "little")
+                        & pc.MEM_EXECUTE, "adding a cave through --add did not make .rdata executable")
+        hook = pc.SITE_BY_NAME["identity_hook"]
+        self.assertEqual(patched[hook.offset:hook.offset + hook.size], hook.patched)
+
+        # Half a cave group is refused, because a hook without its stub jumps into unwritten bytes.
+        half = self._run("--profile", "host-min", "--add", "identity_cave",
+                         "--in", self.src, "--out", os.path.join(self.work, "half.exe"))
+        self.assertNotEqual(half.returncode, 0, half.stdout + half.stderr)
+        self.assertIn("incomplete", half.stdout + half.stderr)
+
+        unknown = self._run("--profile", "host-min", "--add", "no_such_site",
+                            "--in", self.src, "--out", os.path.join(self.work, "unknown.exe"))
+        self.assertNotEqual(unknown.returncode, 0, unknown.stdout + unknown.stderr)
+        self.assertIn("unknown site", unknown.stdout + unknown.stderr)
+
     def test_the_patch_table_can_be_listed(self):
         result = self._run("--profile", "list")
         self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
