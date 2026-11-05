@@ -1744,6 +1744,10 @@ class Handler(BaseHTTPRequestHandler):
             self._reply(json.dumps(state).encode(), ctype="application/json")
             return
         if p.rstrip("/").endswith("/vote"):
+            # The gateway's own leg, not a captured contract: the executable contains no `/vote` literal at all
+            # (runtime/MODS_PATH.md), so the client has never been observed posting a vote. The three body names
+            # below are a guess kept for tools; treat a real vote as a started poll (which is unreachable from a
+            # client build anyway — see runtime/SESSION_ID_AND_OP_CALLER.md).
             channel = _stream_channel_key()
             stream = _stream_for(channel)
             option = ""
