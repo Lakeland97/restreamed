@@ -132,53 +132,58 @@ class PatchClientRoundTripTest(unittest.TestCase):
         self.assertIn("VERDICT: FAIL", damaged.stdout)
         self.assertIn(cave.name, damaged.stdout)
 
-    def test_the_host_play_profile_maps_its_cave_sections(self):
-        """The header half of the patcher: raising VirtualSize and setting MEM_EXECUTE for cave sections.
+    def test_cave_sections_are_mapped_for_the_profiles_that_use_them(self):
+        """The header half of the patcher, over every section that holds a cave body.
 
-        `host-play` is the profile that needs it — its caves live in `.rdata` and `.pdata` tails, which are not
-        mapped executable as shipped. The expectations come from the patcher's own section table, so a table edit
-        cannot silently disagree with the test.
+        `host-play` covers `.rdata` (raised to its raw size and made executable); `all-cosmetics-equip` adds
+        `.pdata`, whose tail arithmetic differs. `.text` is asserted separately: its DRM cave sits in a page the
+        section already maps, so its VirtualSize must not move. Expectations come from the patcher's own
+        `CAVE_SECTIONS`, so a table edit cannot disagree with a stale test.
         """
-        out = os.path.join(self.work, "host-play.exe")
-        result = self._run("--profile", "host-play", "--in", self.src, "--out", out)
-        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        cases = (("host-play", "host-play.exe", {".rdata"}),
+                 ("all-cosmetics-equip", "equip.exe", {".rdata", ".pdata"}))
+        for profile_name, filename, expected in cases:
+            with self.subTest(profile=profile_name):
+                out = os.path.join(self.work, filename)
+                result = self._run("--profile", profile_name, "--in", self.src, "--out", out)
+                self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
-        with open(out, "rb") as handle:
-            patched = handle.read()
+                with open(out, "rb") as handle:
+                    patched = handle.read()
 
-        profile = pc.PROFILES["host-play"]
-        for site in profile.sites:
-            self.assertEqual(patched[site.offset:site.offset + site.size], site.patched,
-                             "%s was not written" % site.name)
+                profile = pc.PROFILES[profile_name]
+                for site in profile.sites:
+                    self.assertEqual(patched[site.offset:site.offset + site.size], site.patched,
+                                     "%s: %s was not written" % (profile_name, site.name))
 
-        before = {section.name: section for section in pc.sections(self.original)}
-        after = {section.name: section for section in pc.sections(patched)}
-        held = set()
-        for site in profile.sites:
-            section = pc.section_for_file_offset(pc.sections(patched), site.offset)
-            if site.name in pc.CAVE_BODIES:
-                held.add(section.name)
+                before = {section.name: section for section in pc.sections(self.original)}
+                after = {section.name: section for section in pc.sections(patched)}
+                held = set()
+                for site in profile.sites:
+                    if site.name in pc.CAVE_BODIES:
+                        held.add(pc.section_for_file_offset(pc.sections(patched), site.offset).name)
 
-        self.assertTrue(held, "host-play installs no cave bodies, so this test proves nothing")
-        for name in held:
-            _shipped, mapped = pc.CAVE_SECTIONS[name]
-            self.assertEqual(after[name].vsize, mapped,
-                             "%s VirtualSize was not raised to the mapped size" % name)
-            self.assertTrue(int.from_bytes(patched[after[name].header + 36:after[name].header + 40], "little")
-                            & pc.MEM_EXECUTE, "%s was not made executable" % name)
-            self.assertEqual(before[name].vsize, pc.CAVE_SECTIONS[name][0],
-                             "the source is not the supported build for %s" % name)
+                self.assertEqual(held, expected,
+                                 "%s no longer exercises %s" % (profile_name, expected - held))
+                for name in held:
+                    _shipped, mapped = pc.CAVE_SECTIONS[name]
+                    self.assertEqual(after[name].vsize, mapped,
+                                     "%s: %s VirtualSize was not raised to the mapped size" % (profile_name, name))
+                    self.assertTrue(int.from_bytes(patched[after[name].header + 36:
+                                                           after[name].header + 40], "little")
+                                    & pc.MEM_EXECUTE, "%s: %s was not made executable" % (profile_name, name))
+                    self.assertEqual(before[name].vsize, pc.CAVE_SECTIONS[name][0],
+                                     "the source is not the supported build for %s" % name)
 
-        # The DRM cave is in `.text`, which is already mapped executable: its size must not move.
-        self.assertEqual(after[".text"].vsize, before[".text"].vsize,
-                         "a profile changed .text's VirtualSize")
+                self.assertEqual(after[".text"].vsize, before[".text"].vsize,
+                                 "%s changed .text's VirtualSize" % profile_name)
 
-        checksum_at = pec.checksum_offset(patched)
-        stored = int.from_bytes(patched[checksum_at:checksum_at + 4], "little")
-        self.assertEqual(stored, pec.compute_checksum(patched), "checksum not recomputed")
+                checksum_at = pec.checksum_offset(patched)
+                stored = int.from_bytes(patched[checksum_at:checksum_at + 4], "little")
+                self.assertEqual(stored, pec.compute_checksum(patched), "checksum not recomputed")
 
-        verify = self._run("--profile", "host-play", "--verify", out)
-        self.assertEqual(verify.returncode, 0, verify.stdout + verify.stderr)
+                verify = self._run("--profile", profile_name, "--verify", out)
+                self.assertEqual(verify.returncode, 0, verify.stdout + verify.stderr)
 
     def test_re_patching_an_already_patched_file_is_refused(self):
         twice = os.path.join(self.work, "twice.exe")
