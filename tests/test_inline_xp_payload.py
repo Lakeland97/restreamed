@@ -14,13 +14,26 @@ be verified offline.
 
 import json
 import os
+import re
 import sys
 import unittest
 
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(TESTS_DIR)
 sys.path.insert(0, TESTS_DIR)
+sys.path.insert(0, os.path.join(ROOT, "tools"))
 
+import hxinflate  # noqa: E402
 import test_mock_branch_b as base  # noqa: E402
+
+
+def _type_cache(body):
+    """The type-cache blob inside a served body: `Y<len>:` followed by a `ZVER3…` segment."""
+    match = re.search(rb"Y(\d+):ZVER3", body)
+    assert match, "no type cache in the body"
+    length = int(match.group(1))
+    start = match.end() - len(b"ZVER3")
+    return body[start:start + length].decode("latin-1")
 
 
 class InlineXpPayloadTest(unittest.TestCase):
@@ -47,6 +60,23 @@ class InlineXpPayloadTest(unittest.TestCase):
         self.assertLess(text.find("xp"), text.find("levelEntries"),
                         "xp is declared before levelEntries in the client's own order")
         self.assertLess(text.find("levelEntries"), text.find("maxLevel"))
+
+    def test_the_served_declaration_is_positional_with_three_fields(self):
+        """Decode what the client actually receives, not just the text.
+
+        `custom=False` selects the positional branch (`0x140895903`); `custom=True` would dispatch to
+        `hxUnserialize`, which `AdvancementComponent` does not register. `base = -1` means the wire declaration
+        names no base class, so the reader's name array index starts from the three own fields.
+        """
+        body = self._body({"GUL_DSUR_HX_INLINE_XP": "5"})
+        reader = hxinflate.Reader(_type_cache(body))
+        reader.read_typeinfo_loop()
+        decls = {decl.name: decl for decl in reader.types}
+        adv = decls.get("model.component.advancement.AdvancementComponent")
+        self.assertIsNotNone(adv, "the served type cache does not declare the component")
+        self.assertFalse(adv.custom, "custom=True would call a hxUnserialize this class does not have")
+        self.assertEqual(adv.fields, ["xp", "levelEntries", "maxLevel"])
+        self.assertEqual(adv.base, -1, "the wire declaration names no base class")
 
     def test_the_knob_is_off_by_default(self):
         body = self._body({})
