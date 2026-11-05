@@ -31,11 +31,12 @@ SHIPPED = os.path.join(ROOT, "game", "hns", "Binaries", "Win64", "Streamline.exe
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 try:
     import fix_pe_checksum as pec  # noqa: E402
+    import patch_client as pc      # noqa: E402
 except Exception:  # pragma: no cover
-    pec = None
+    pec = pc = None
 
 
-@unittest.skipUnless(os.path.exists(SHIPPED) and pec is not None,
+@unittest.skipUnless(os.path.exists(SHIPPED) and pec is not None and pc is not None,
                      "shipped exe is absent (game/ is not in the repo)")
 class PatchClientRoundTripTest(unittest.TestCase):
     @classmethod
@@ -80,6 +81,44 @@ class PatchClientRoundTripTest(unittest.TestCase):
 
         detect = self._run("--detect", self.out)
         self.assertIn("host-min", detect.stdout, detect.stdout)
+
+    def test_the_client_profile_injects_its_cave(self):
+        """The cave path end to end: a body lands, its hooks jump to it, and the image shape does not move.
+
+        `host-min` above is byte patches only. `client` is the smallest profile that injects a cave body (the DRM
+        FakeID stub in `.text`), so it covers the copy-a-stub-into-a-section-tail path that every other profile
+        builds on. The cave sits in the page `.text` already maps, so VirtualSize must stay put.
+        """
+        out = os.path.join(self.work, "client.exe")
+        result = self._run("--profile", "client", "--in", self.src, "--out", out)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+
+        with open(out, "rb") as handle:
+            patched = handle.read()
+
+        cave = pc.SITE_BY_NAME["drm_cave"]
+        self.assertEqual(patched[cave.offset:cave.offset + cave.size], cave.patched,
+                         "the cave body was not written at its offset")
+
+        for name in ("drm_entry_a", "drm_entry_b", "drm_entry_c"):
+            hook = pc.SITE_BY_NAME[name]
+            self.assertEqual(patched[hook.offset:hook.offset + hook.size], hook.patched,
+                             "%s was not written" % name)
+            self.assertEqual(hook.patched[0], 0xE9, "%s is not a jump" % name)
+
+        before = {section.name: section.vsize for section in pc.sections(self.original)}
+        after = {section.name: section.vsize for section in pc.sections(patched)}
+        self.assertEqual(after[".text"], before[".text"],
+                         "the client profile moved .text's VirtualSize; its cave is already in a mapped page")
+
+        checksum_at = pec.checksum_offset(patched)
+        stored = int.from_bytes(patched[checksum_at:checksum_at + 4], "little")
+        self.assertEqual(stored, pec.compute_checksum(patched),
+                         "checksum not recomputed for the cave profile")
+
+        verify = self._run("--profile", "client", "--verify", out)
+        self.assertEqual(verify.returncode, 0, verify.stdout + verify.stderr)
+        self.assertIn("VERDICT: PASS", verify.stdout)
 
     def test_re_patching_an_already_patched_file_is_refused(self):
         twice = os.path.join(self.work, "twice.exe")
