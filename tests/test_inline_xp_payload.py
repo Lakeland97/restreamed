@@ -175,6 +175,18 @@ class InlineXpPayloadTest(unittest.TestCase):
         self.assertEqual(entries[0]["body"], [2, 0, []])
         self.assertEqual(max_level, 2)
 
+    def test_the_levels_override_reaches_the_wire(self):
+        """A configured entry must arrive as the same typed element, not just be accepted by the builder."""
+        body = self._body({"GUL_DSUR_HX_INLINE_XP": "5",
+                           "GUL_DSUR_HX_INLINE_LEVELS": "[[3, 10, []]]"})
+        updated, _type_info, _return_val = reply_walk.success_parts(body)
+        reader = hxinflate.Reader(updated[0])
+        reader.value()
+        component = reader.value()["body"][6]
+        _xp, entries, _max = component["body"]
+        self.assertEqual(len(entries), 1)
+        self.assertEqual(entries[0]["body"], [3, 10, []])
+
     def test_the_knob_is_off_by_default(self):
         body = self._body({})
         self.assertNotIn(b"AdvancementComponent", body,
