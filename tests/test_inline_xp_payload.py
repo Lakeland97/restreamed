@@ -78,6 +78,23 @@ class InlineXpPayloadTest(unittest.TestCase):
         self.assertEqual(adv.fields, ["xp", "levelEntries", "maxLevel"])
         self.assertEqual(adv.base, -1, "the wire declaration names no base class")
 
+    def test_the_level_list_carries_a_typed_entry(self):
+        """An empty list faults in the client; the payload must ship a real LevelEntry.
+
+        `0x140BD2EB4` sets the entry cursor to null on a zero count and `0x140BD2EF4` then reads `[cursor+8]`, so
+        the list has to be non-empty *and* typed: the element's fields live at `+8` (level) and `+0xc`
+        (xpRequired), which only a `LevelEntry` instance has.
+        """
+        body = self._body({"GUL_DSUR_HX_INLINE_XP": "5"})
+        reader = hxinflate.Reader(_type_cache(body))
+        reader.read_typeinfo_loop()
+        decls = {decl.name: decl for decl in reader.types}
+        entry = decls.get("model.component.advancement.LevelEntry")
+        self.assertIsNotNone(entry, "the payload declares no LevelEntry class")
+        self.assertFalse(entry.custom)
+        self.assertEqual(entry.fields, ["level", "xpRequired", "rewards"])
+        self.assertIn(b"LevelEntry", body)
+
     def test_the_knob_is_off_by_default(self):
         body = self._body({})
         self.assertNotIn(b"AdvancementComponent", body,

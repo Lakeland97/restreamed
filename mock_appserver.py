@@ -820,23 +820,39 @@ def _inline_xp_reply(payload):
     one server-side route to the home UI's flag condition (`PlayedFirstQuickMatch`, set when either progression
     getter reads above 1.0 or above 0).
 
-    The component's declared order is `[xp, levelEntries, maxLevel]`, and `levelEntries` is served as an EMPTY
-    list rather than null: the reader walks it, so a null faults where the flag reads it, while an empty list
-    leaves the `xp > 0` arm to fire. The element shape of a non-empty list is unknown, so nothing here needs it.
+    The component's declared order is `[xp, levelEntries, maxLevel]`. `levelEntries` must hold **at least one
+    entry**: the level getter sets its cursor to null when the count is zero and then reads `[cursor+8]`
+    (`0x140BD2EB4` -> `0x140BD2EF4`), so an empty array faults exactly like a null one. The default entry is
+    `level = 2, xpRequired = 0, rewards = []`, which both fires the `level > 1.0` arm and keeps the loop's
+    threshold comparison true; `GUL_DSUR_HX_INLINE_LEVELS` replaces it with a JSON list of
+    `[level, xpRequired, rewards]` triples.
     """
     import hxinflate
     ent = hxinflate.Decl("model.entity.ModelEntity", custom=True)
     adv = hxinflate.Decl("model.component.advancement.AdvancementComponent", custom=False,
                          fields=["xp", "levelEntries", "maxLevel"])
+    lvl = hxinflate.Decl("model.component.advancement.LevelEntry", custom=False,
+                         fields=["level", "xpRequired", "rewards"])
+
+    def _entry(item):
+        if isinstance(item, dict):
+            values = [item.get("level", 2), item.get("xpRequired", 0), item.get("rewards") or []]
+        else:
+            values = list(item) + [[]]
+            values = values[:3]
+        return [int(values[0]), int(values[1]), values[2]]
+
+    configured = json.loads(os.environ.get("GUL_DSUR_HX_INLINE_LEVELS", "[]"))
+    entries = [_entry(item) for item in configured] or [[2, 0, []]]
+    levels = [hxinflate.Instance(values=values, decl=lvl) for values in entries]
     adv_inst = hxinflate.Instance(
-        values=[int(os.environ["GUL_DSUR_HX_INLINE_XP"]),
-                json.loads(os.environ.get("GUL_DSUR_HX_INLINE_LEVELS", "[]")),
-                int(os.environ.get("GUL_DSUR_HX_INLINE_MAXLEVEL", "1"))],
+        values=[int(os.environ["GUL_DSUR_HX_INLINE_XP"]), levels,
+                int(os.environ.get("GUL_DSUR_HX_INLINE_MAXLEVEL", "2"))],
         decl=adv)
     body = [_iid(), os.environ.get("GUL_IID_TEMPLATE", "player"), {}, None, None,
             json.loads(os.environ.get("GUL_DSUR_HX_N6", '["x"]')), adv_inst]
     body += [""] * int(os.environ.get("GUL_DSUR_HX_TAIL", "1"))
-    blob = hxinflate.type_cache([ent, adv], purpose="game")
+    blob = hxinflate.type_cache([ent, adv, lvl], purpose="game")
     ents = [hxinflate.object_stream(hxinflate.Instance(values=body, decl=ent), purpose="game")]
     slog("    (inline AdvancementComponent: xp=%s levelEntries=%s)"
          % (os.environ["GUL_DSUR_HX_INLINE_XP"], os.environ.get("GUL_DSUR_HX_INLINE_LEVELS", "[]")))
