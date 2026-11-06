@@ -70,9 +70,9 @@ Status
   `FirstMatchData.PlayedTutorial` in `GameUserSettings.ini` stays true and the entry modal does not
   return until that value is set back to false.
 - The community registry serves the server list the overlay reads.
-- An out-of-process overlay (`tools/overlay`) for clients that are not patched: it arms the map-loaded
-  latch so a native-travel join renders, and hosts the find/host panels as triggers into the game's
-  own menus.
+- An injected ImGui overlay (`tools/overlay`) for clients you would rather not modify on disk: it patches
+  in memory only, arms the map-loaded latch so a native-travel join renders, and hosts the find/host
+  panels as triggers into the game's own menus.
 - The stream layer's read side: with `GUL_STREAM` the mock serves a deterministic mod rotation
   (four slots, one per bingo group, each mod timed by its own duration and drawn by its template
   weight), the channel mod schedule, and a profile built from the same inputs, alongside the poll
@@ -289,10 +289,9 @@ Layout
   tools/fix_pe_checksum.py   Recompute the PE optional-header checksum after editing
                              the executable yourself.
 
-  tools/overlay/             Out-of-process overlay (ImGui) for clients that cannot be
-                             patched: it arms the map-loaded latch so a native-travel
-                             join renders, and hosts the find/host buttons. See its
-                             README.
+  tools/overlay/             Injected ImGui overlay (DLL) that patches only in memory: it
+                             arms the map-loaded latch so a native-travel join renders, and
+                             hosts the find/host buttons. See its README.
 
   tools/u16scan.py           UTF-16LE string extractor for binary triage.
   tools/unwind.py            Unwind/exception metadata helpers for the shipped binary.
