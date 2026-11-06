@@ -16,7 +16,8 @@ So the wire is `[null echo][Result.Success(DataStoreUpdateResponse{returnVal: ..
 `Result.Success(<value>)` fails the cast (NULL) and the gate reads `[NULL+0x8]` at
 0x1411f781e.
 
-`success_returnval` asserts that envelope and returns the decoded `returnVal`:
+`success_parts` asserts that envelope and returns `(updatedEntities, entityTypeInfo, returnVal)`;
+`success_returnval` keeps the branch-A assertion and returns the decoded `returnVal`:
 an enum as `{"enum", "index", "args"}`, an object as a dict, `{}` for an empty object.
 """
 import os
@@ -32,8 +33,20 @@ DSUR = "appserver.remoting.DataStoreUpdateResponse"
 DSUR_FIELDS = ["updatedEntities", "entityTypeInfo", "returnVal"]
 
 
+def success_parts(body: bytes):
+    """Assert `[n][Result.Success(DSUR)]` and return `(updatedEntities, entityTypeInfo, returnVal)`."""
+    return _success_parts(body)
+
+
 def success_returnval(body: bytes):
     """Assert `[n][Result.Success(DSUR)]` and return the DSUR's `returnVal`."""
+    updated, _type_info, return_val = _success_parts(body)
+    if updated != []:
+        raise AssertionError("branch A needs updatedEntities == [], got %r" % (updated,))
+    return return_val
+
+
+def _success_parts(body: bytes):
     if not body.startswith(b"hxr"):
         raise AssertionError("reply is not an hxr remoting body: %r" % body[:40])
     text = body[3:].decode("latin-1")
@@ -75,7 +88,5 @@ def success_returnval(body: bytes):
                              % (payload["decl"].fields, DSUR_FIELDS))
     if len(payload["body"]) != 3:
         raise AssertionError("DSUR body has %d values, expected 3" % len(payload["body"]))
-    updated, _type_info, return_val = payload["body"]
-    if updated != []:
-        raise AssertionError("branch A needs updatedEntities == [], got %r" % (updated,))
-    return return_val
+    updated, type_info, return_val = payload["body"]
+    return updated, type_info, return_val

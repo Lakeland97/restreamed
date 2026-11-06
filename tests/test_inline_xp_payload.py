@@ -24,6 +24,7 @@ sys.path.insert(0, TESTS_DIR)
 sys.path.insert(0, os.path.join(ROOT, "tools"))
 
 import hxinflate  # noqa: E402
+import reply_walk  # noqa: E402
 import test_mock_branch_b as base  # noqa: E402
 
 
@@ -146,6 +147,33 @@ class InlineXpPayloadTest(unittest.TestCase):
         value = reader.value()
         self.assertEqual(value["decl"].name, "model.component.advancement.LevelEntry")
         self.assertEqual(value["body"], [2, 0, []])
+
+    def test_the_served_entity_stream_carries_one_typed_level_entry(self):
+        """The whole wire, not just the declaration: decode updatedEntities[0] and walk to the component.
+
+        This is the shape the client inflates (`entityTypeInfo` declares the classes, `updatedEntities[0]` is the
+        entity stream), so it fails if the nested instance is serialized as a plain value or the list is empty.
+        """
+        body = self._body({"GUL_DSUR_HX_INLINE_XP": "5"})
+        updated, type_info, _return_val = reply_walk.success_parts(body)
+        self.assertEqual(len(updated), 1, "branch B needs exactly one updated entity")
+        self.assertIn("ZVER3", type_info)
+
+        reader = hxinflate.Reader(updated[0])
+        reader.value()                                     # purpose
+        entity = reader.value()
+        self.assertEqual(entity["decl"].name, "model.entity.ModelEntity")
+
+        component = entity["body"][6]
+        self.assertEqual(component["decl"].name,
+                         "model.component.advancement.AdvancementComponent")
+        xp, entries, max_level = component["body"]
+        self.assertEqual(xp, 5)
+        self.assertEqual(len(entries), 1, "an empty level list faults in the client")
+        self.assertEqual(entries[0]["decl"].name,
+                         "model.component.advancement.LevelEntry")
+        self.assertEqual(entries[0]["body"], [2, 0, []])
+        self.assertEqual(max_level, 2)
 
     def test_the_knob_is_off_by_default(self):
         body = self._body({})
