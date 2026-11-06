@@ -187,6 +187,16 @@ class InlineXpPayloadTest(unittest.TestCase):
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["body"], [3, 10, []])
 
+    def test_the_xp_knob_wins_over_the_account_component_knob(self):
+        """Both knobs on: the reply must be the XP entity, not the account-component one.
+
+        `_dsur` returns the inline-XP reply before it looks at anything else, and the docstring says so; this pins
+        that precedence so a refactor cannot quietly make the run serve the wrong shape.
+        """
+        body = self._body({"GUL_DSUR_HX_INLINE_XP": "5", "GUL_DSUR_HX_INLINE_COMPONENT": "1"})
+        self.assertIn(b"AdvancementComponent", body)
+        self.assertNotIn(b"AccountComponent", body)
+
     def test_the_knob_is_off_by_default(self):
         body = self._body({})
         self.assertNotIn(b"AdvancementComponent", body,
