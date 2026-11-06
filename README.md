@@ -91,9 +91,11 @@ Status
   arrays are a side record, not the storage; a single run that polls the arrays while capturing the screen
   settles it. Either way, applying a *chosen* catalogue mod needs an in-process call: the live layer itself is
   entered through a private-service call this client never makes, so no endpoint can start it. The `host-mod`
-  profile does it: the overlay polls the service's current mod, writes it to a shared cell, and a small cave
-  applies it through the game's own apply path — verified end to end in a match, and it falls back to the
-  game's own pick when no service is running. It is experimental and one mod at a time. What the layer was and
+  profile does it: the overlay polls the service's current mod and writes it to a shared cell, and a small cave
+  applies it through the game's own apply path. Both halves are verified in a match — an external writer
+  standing in for the overlay, and the overlay writing that cell — while the single run that watches the two
+  together is still owed. With no service running the cave replays the game's own pick. It is experimental and
+  one mod at a time. What the layer was and
   what a local replacement has to provide:
   [StreamLayer](https://github.com/Lakeland97/restreamed/wiki/StreamLayer).
 - A silent wardrobe selection for every item. With `all-cosmetics-equip` the slot pages open, a pick
