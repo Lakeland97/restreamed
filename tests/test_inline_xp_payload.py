@@ -36,6 +36,31 @@ def _type_cache(body):
     return body[start:start + length].decode("latin-1")
 
 
+class _env(object):
+    """Set/clear environment variables for a block, restoring them afterwards."""
+
+    def __init__(self, **values):
+        self.values = values
+        self.saved = {}
+
+    def __enter__(self):
+        for key, value in self.values.items():
+            self.saved[key] = os.environ.get(key)
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        return self
+
+    def __exit__(self, *exc):
+        for key, value in self.saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        return False
+
+
 class InlineXpPayloadTest(unittest.TestCase):
     def _body(self, extra_env):
         # The harness's BASE_ENV enables the spec-aware HX branch, which returns before this one; disable it so
@@ -94,6 +119,17 @@ class InlineXpPayloadTest(unittest.TestCase):
         self.assertFalse(entry.custom)
         self.assertEqual(entry.fields, ["level", "xpRequired", "rewards"])
         self.assertIn(b"LevelEntry", body)
+
+    def test_the_default_entry_is_present_and_overridable(self):
+        """The builder's own seam: an empty list is replaced by one safe entry, and the env var still wins."""
+        import mock_appserver
+        with _env(GUL_DSUR_HX_INLINE_LEVELS=None):
+            self.assertEqual(mock_appserver._inline_level_entries(), [[2, 0, []]])
+        with _env(GUL_DSUR_HX_INLINE_LEVELS='[]'):
+            self.assertEqual(mock_appserver._inline_level_entries(), [[2, 0, []]])
+        with _env(GUL_DSUR_HX_INLINE_LEVELS='[[3, 10, []], {"level": 4, "xpRequired": 20}]'):
+            self.assertEqual(mock_appserver._inline_level_entries(),
+                             [[3, 10, []], [4, 20, []]])
 
     def test_the_knob_is_off_by_default(self):
         body = self._body({})

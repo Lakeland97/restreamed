@@ -812,6 +812,24 @@ def _branch_b_for_current_op():
 OP_CTX_OPS = lambda: [o.strip() for o in os.environ.get("GUL_OP_CTX_OPS", "").split(",") if o.strip()]
 
 
+def _inline_level_entries():
+    """The `[level, xpRequired, rewards]` triples the inline XP payload serves. Never empty.
+
+    An empty `levelEntries` array faults in the client (see `_inline_xp_reply`), so the default is one entry that
+    both fires the `level > 1.0` arm and passes the loop's threshold test. `GUL_DSUR_HX_INLINE_LEVELS` replaces it
+    with a JSON list of triples or objects.
+    """
+    configured = json.loads(os.environ.get("GUL_DSUR_HX_INLINE_LEVELS", "[]"))
+    entries = []
+    for item in configured:
+        if isinstance(item, dict):
+            values = [item.get("level", 2), item.get("xpRequired", 0), item.get("rewards") or []]
+        else:
+            values = (list(item) + [[]])[:3]
+        entries.append([int(values[0]), int(values[1]), values[2]])
+    return entries or [[2, 0, []]]
+
+
 def _inline_xp_reply(payload):
     """The reply that serves the local player with a non-zero advancement `xp`.
 
@@ -834,16 +852,7 @@ def _inline_xp_reply(payload):
     lvl = hxinflate.Decl("model.component.advancement.LevelEntry", custom=False,
                          fields=["level", "xpRequired", "rewards"])
 
-    def _entry(item):
-        if isinstance(item, dict):
-            values = [item.get("level", 2), item.get("xpRequired", 0), item.get("rewards") or []]
-        else:
-            values = list(item) + [[]]
-            values = values[:3]
-        return [int(values[0]), int(values[1]), values[2]]
-
-    configured = json.loads(os.environ.get("GUL_DSUR_HX_INLINE_LEVELS", "[]"))
-    entries = [_entry(item) for item in configured] or [[2, 0, []]]
+    entries = _inline_level_entries()
     levels = [hxinflate.Instance(values=values, decl=lvl) for values in entries]
     adv_inst = hxinflate.Instance(
         values=[int(os.environ["GUL_DSUR_HX_INLINE_XP"]), levels,
