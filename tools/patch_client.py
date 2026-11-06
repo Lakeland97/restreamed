@@ -204,6 +204,13 @@ SITES = (
        "keep the m_timeLimitReached latch, then gotoPhase('RoundEnding')"),
 
 
+    # --- mod apply cave (experimental) --------------------------------------
+    _s("mod_apply_hook", 0x140BAE38C, 0x00BAD78C, "e86feec0ff", "e96f634003",
+       "hook activateRandomMod's apply call into the mod-apply cave (same registers the game uses)"),
+    _s("mod_apply_cave", 0x143FB4700, 0x03E20700, bytes(124),
+       "ff054a0a0000525141504883ec488b05ec09000085c0745283f83f774d89442420c744242400000000488d05d80900004889442428c744241000000000c74424140000000048c744241800000000488d5424204c8d442410e8a38a80fc4883c4484158595ae9279cbffc4883c4484158595ae8898a80fce9159cbffc",
+       "apply the shared-buffer id; entry count at 0x143FB5150 (durable evidence across sessions)"),
+
     # --- client profile: DRM identity ---------------------------------------
     # The client must pass the launcher check before it can log in. The cave
     # builds DRMType.FakeID("restrea1") and hands it to getDRM's success path.
@@ -278,13 +285,15 @@ SITE_ORDER = {site.name: index for index, site in enumerate(SITES)}
 # Stub bodies live in the .rdata tail; a profile that includes one must map that
 # tail executable and must include its hook.
 CAVE_BODIES = ("identity_cave", "loop3_cave", "round_timer_cave",
-               "equip_fatal_cave", "equip_own_cave", "cosmetic_nullid_cave")
+               "equip_fatal_cave", "equip_own_cave", "cosmetic_nullid_cave",
+               "mod_apply_cave")
 CAVE_GROUPS = (
     ("identity cave", ("identity_hook", "identity_cave", "contestants_phase")),
     ("post-match loop cave", ("loop3_hook", "loop3_cave")),
     ("round timer cave", ("round_timer_hook", "round_timer_cave")),
     ("equip safety cave", ("equip_oob_hook", "equip_fatal_cave")),
     ("equip chosen cave", ("equip_own_hook", "equip_own_cave")),
+    ("mod apply cave", ("mod_apply_hook", "mod_apply_cave")),
 )
 
 HOST_BYTES = (
@@ -384,6 +393,16 @@ PROFILES = {
         True,
     ),
 }
+
+# Experimental: applies the mod the local service currently serves, through the game's own apply hop.
+# Needs the shared cell written by the overlay (tools/overlay, stream_* keys in overlay.ini).
+PROFILES["host-mod"] = Profile(
+    "host-mod",
+    "host-play plus the mod-apply cave: the id in the shared cell (0x143FB5100) is applied through the game's "
+    "own apply hop; an empty cell replays the game's own pick. Pair with the overlay's stream poller",
+    PROFILES["host-play"].site_names + ("mod_apply_hook", "mod_apply_cave"),
+    True,
+)
 
 
 # --- PE plumbing -------------------------------------------------------------

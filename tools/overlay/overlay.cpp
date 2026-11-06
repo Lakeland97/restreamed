@@ -6,6 +6,8 @@
 #include <windows.h>
 #include <winhttp.h>
 #include <stdio.h>
+#include <stdint.h>
+#include <string.h>
 #include <d3d11.h>
 #include <dxgi.h>
 
@@ -25,6 +27,10 @@ void* g_menu_self = nullptr;
 DWORD g_join_at = 0;
 char g_game_dir[MAX_PATH] = {};
 DWORD g_last_fetch = 0;
+char g_stream_host[128] = "192.168.64.1";
+int g_stream_port = 8096;
+char g_stream_channel[64] = {};
+DWORD g_last_stream_poll = 0;
 
 bool FetchRegistry(const char* host, int port, const char* path) {
     HINTERNET ses = WinHttpOpen(L"streamline-overlay/1", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
@@ -108,6 +114,9 @@ void FetchFromConfig() {
             if (!strcmp(line, "host")) strncpy(host, val, sizeof(host) - 1);
             else if (!strcmp(line, "port")) port = atoi(val);
             else if (!strcmp(line, "path")) strncpy(path, val, sizeof(path) - 1);
+            else if (!strcmp(line, "stream_host")) strncpy(g_stream_host, val, sizeof(g_stream_host) - 1);
+            else if (!strcmp(line, "stream_port")) g_stream_port = atoi(val);
+            else if (!strcmp(line, "stream_channel")) strncpy(g_stream_channel, val, sizeof(g_stream_channel) - 1);
         }
         fclose(f);
     }
@@ -115,6 +124,87 @@ void FetchFromConfig() {
     g_last_fetch = GetTickCount();
 }
 
+
+// --- stream driver -----------------------------------------------------------------
+// The local service picks the mod; the patched client reads it from a fixed scratch cell
+// (.tls padding at base+0x3FB5100). The cave applies it, or replays the game's own pick
+// when the cell is empty. The wiki's Stream layer page documents the protocol.
+
+static unsigned char* Scratch() {
+    HMODULE m = GetModuleHandleW(nullptr);
+    return m ? reinterpret_cast<unsigned char*>(m) + 0x3FB5100 : nullptr;
+}
+
+void SetModChoice(const char* id) {
+    unsigned char* s = Scratch();
+    if (!s) return;
+    size_t n = id ? strlen(id) : 0;
+    if (n > 63) n = 0;                       // the cave rejects lengths above 63
+    *reinterpret_cast<uint32_t*>(s) = static_cast<uint32_t>(n);
+    *reinterpret_cast<uint32_t*>(s + 4) = 0;
+    if (n) { memcpy(s + 8, id, n); s[8 + n] = 0; }
+    else s[8] = 0;
+}
+
+extern "C" __declspec(dllexport) int ovl_set_mod(const char* id) {
+    SetModChoice(id);
+    return 1;
+}
+
+bool HttpGetBody(const char* host, int port, const char* path, char* out, size_t cap) {
+    if (!out || cap < 2) return false;
+    out[0] = 0;
+    HINTERNET ses = WinHttpOpen(L"streamline-overlay/1", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY,
+                                WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+    if (!ses) return false;
+    wchar_t whost[128] = {};
+    MultiByteToWideChar(CP_UTF8, 0, host, -1, whost, 128);
+    wchar_t wpath[256] = {};
+    MultiByteToWideChar(CP_UTF8, 0, path, -1, wpath, 256);
+    HINTERNET con = WinHttpConnect(ses, whost, (INTERNET_PORT)port, 0);
+    if (!con) { WinHttpCloseHandle(ses); return false; }
+    HINTERNET req = WinHttpOpenRequest(con, L"GET", wpath, nullptr, WINHTTP_NO_REFERER,
+                                       WINHTTP_DEFAULT_ACCEPT_TYPES, 0);
+    bool ok = false;
+    if (req && WinHttpSendRequest(req, WINHTTP_NO_ADDITIONAL_HEADERS, 0, nullptr, 0, 0, 0) &&
+        WinHttpReceiveResponse(req, nullptr)) {
+        DWORD got = 0, total = 0;
+        while (WinHttpReadData(req, out + total, (DWORD)(cap - 1 - total), &got) && got > 0 &&
+               total + got < cap - 1) {
+            total += got;
+            out[total] = 0;
+        }
+        out[total] = 0;
+        ok = total > 0;
+    }
+    if (req) WinHttpCloseHandle(req);
+    WinHttpCloseHandle(con);
+    WinHttpCloseHandle(ses);
+    return ok;
+}
+
+// `{"mod": {"mod": "game_mod_x", ...}}` or `{"mod": null}` -> the id, or "" for none.
+void ExtractCurrentMod(const char* body, char* out, size_t cap) {
+    out[0] = 0;
+    const char* key = "\"mod\": \"";
+    const char* at = strstr(body, key);
+    if (!at) return;                       // null or a different shape: leave empty
+    at += strlen(key);
+    size_t i = 0;
+    while (at[i] && at[i] != '"' && i + 1 < cap) { out[i] = at[i]; ++i; }
+    out[i] = 0;
+}
+
+void PollStreamOnce() {
+    if (!g_stream_channel[0]) return;      // not configured: leave stock behaviour alone
+    char path[128] = {};
+    _snprintf(path, sizeof(path), "/channels/%s/mods/current", g_stream_channel);
+    char body[1024] = {};
+    char id[64] = {};
+    if (HttpGetBody(g_stream_host, g_stream_port, path, body, sizeof(body)))
+        ExtractCurrentMod(body, id, sizeof(id));
+    SetModChoice(id[0] ? id : nullptr);    // failure or null clears -> cave falls back
+}
 
 using PresentFn = HRESULT(WINAPI*)(IDXGISwapChain*, UINT, UINT);
 
@@ -334,6 +424,13 @@ HRESULT WINAPI HookPresent(IDXGISwapChain* self, UINT sync, UINT flags) {
     if (!g_present) return E_FAIL;
     if (!g_imgui_ready) InitImGui(self);
     ArmMapLoaded();
+    {
+        DWORD now = GetTickCount();
+        if (!g_last_stream_poll || now - g_last_stream_poll > 1000) {
+            g_last_stream_poll = now;
+            PollStreamOnce();
+        }
+    }
     if (g_imgui_ready && g_visible && g_device && g_context) {
         // The game unbinds its render target before Present, so bind the back
         // buffer ourselves or ImGui has nothing to draw into.
@@ -404,6 +501,7 @@ DWORD WINAPI InitThread(LPVOID) {
         Sleep(100);
     }
     HookSwapChain();
+    FetchFromConfig();   // read overlay.ini at startup so the stream poller knows its channel
     return 0;
 }
 
