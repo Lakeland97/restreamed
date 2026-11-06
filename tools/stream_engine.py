@@ -274,3 +274,15 @@ class Rotation:
     def mods(self, now):
         return [a["mod"] for a in self.state(now)["slots"]]
 
+    def active_slot(self, now):
+        """The slot that most recently started and is still running, or None.
+
+        The game applies one mod at a time, so a client that drives it needs a single id rather than the
+        four concurrent slots. The most recently started running slot is the one a player would expect to
+        see, and ties fall to the lower slot number so the answer is deterministic.
+        """
+        live = [slot for slot in self.state(now)["slots"] if slot["remaining"] > 0]
+        if not live:
+            return None
+        return max(live, key=lambda slot: (slot["started_at"], -slot["slot"]))
+

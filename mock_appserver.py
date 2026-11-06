@@ -1730,6 +1730,12 @@ class Handler(BaseHTTPRequestHandler):
                  % (body["mode"], body["pool_size"], body["window"]))
             self._reply(json.dumps(body).encode(), ctype="application/json")
             return
+        if re.search(r"/channels/[^/]+/mods/current", p):
+            channel = p.split("/channels/")[1].split("/")[0]
+            slot = _rotation_for(channel).active_slot(time.time())
+            slog("    (channel current mod -> %s)" % (slot["mod"] if slot else None))
+            self._reply(json.dumps({"mod": slot}).encode(), ctype="application/json")
+            return
         if re.search(r"/channels/[^/]+/mods", p):
             channel = p.split("/channels/")[1].split("/")[0]
             state = _rotation_for(channel).state(time.time())

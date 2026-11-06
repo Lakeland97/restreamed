@@ -162,3 +162,18 @@ class ProfileTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class ActiveSlotTest(unittest.TestCase):
+    def test_newest_running_slot_wins(self):
+        rot = se.Rotation(seed=4)
+        now = 1_800_000_000
+        slots = rot.state(now)["slots"]
+        self.assertTrue(slots)
+        active = rot.active_slot(now)
+        newest = max(slots, key=lambda s: (s["started_at"], -s["slot"]))
+        self.assertEqual(active["mod"], newest["mod"])
+        self.assertGreater(active["remaining"], 0)
+
+    def test_empty_pool_has_no_active_slot(self):
+        rot = se.Rotation(seed=4, pool=[])
+        self.assertIsNone(rot.active_slot(1_800_000_000))

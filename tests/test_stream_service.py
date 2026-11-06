@@ -104,3 +104,44 @@ class StreamServiceTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+class CurrentModTest(unittest.TestCase):
+    """`channels/<id>/mods/current` returns exactly one running mod, for a client that applies one at a time."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.port = _free_port()
+        cls.base = "http://127.0.0.1:%d" % cls.port
+        env = {k: v for k, v in os.environ.items() if not k.startswith("GUL_")}
+        env.update({"GUL_STREAM": "1", "GUL_ROTATION_SEED": "3",
+                    "GUL_LOG": os.path.join(tempfile.gettempdir(), "stream_current_test.log")})
+        cls.proc = subprocess.Popen([sys.executable, "mock_appserver.py", str(cls.port)],
+                                    cwd=ROOT, env=env,
+                                    stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            try:
+                with socket.create_connection(("127.0.0.1", cls.port), timeout=0.2):
+                    return
+            except OSError:
+                time.sleep(0.1)
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.proc.terminate()
+        cls.proc.wait(timeout=5)
+
+    def test_current_returns_one_running_mod(self):
+        body = _get(self.base + "/channels/demo/mods/current")
+        self.assertIn("mod", body)
+        slot = body["mod"]
+        self.assertIsNotNone(slot, "a running rotation always has at least one slot")
+        self.assertTrue(slot["mod"].startswith("game_mod_"), slot)
+        self.assertGreater(slot["remaining"], 0, slot)
+        self.assertEqual(set(slot), {"mod", "slot", "started_at", "ends_at", "remaining", "duration"})
+
+    def test_current_is_stable_between_calls(self):
+        a = _get(self.base + "/channels/demo/mods/current")["mod"]
+        b = _get(self.base + "/channels/demo/mods/current")["mod"]
+        self.assertEqual(a["mod"], b["mod"])
+        self.assertEqual(a["slot"], b["slot"])
