@@ -89,9 +89,11 @@ Status
   description — yet the three replicated/scripted mod arrays read empty throughout. The most consistent
   reading is that a mod reaches the screen through the apply event without ever entering those arrays, i.e. the
   arrays are a side record, not the storage; a single run that polls the arrays while capturing the screen
-  settles it. Either way, applying a *chosen* catalogue mod deliberately needs an in-process call: the live
-  layer itself is entered through a private-service call this client never makes, so no endpoint can start it.
-  What the layer was and what a local replacement has to provide:
+  settles it. Either way, applying a *chosen* catalogue mod needs an in-process call: the live layer itself is
+  entered through a private-service call this client never makes, so no endpoint can start it. A client patch
+  can do it — an experimental profile hooks the game's own apply call and substitutes a chosen mod id, verified
+  twice in one match with the host stable — but it bakes the id into the patch and is not part of a release
+  profile yet. What the layer was and what a local replacement has to provide:
   [StreamLayer](https://github.com/Lakeland97/restreamed/wiki/StreamLayer).
 - A silent wardrobe selection for every item. With `all-cosmetics-equip` the slot pages open, a pick
   applies the item and it persists. An item the player owns applies with no dialog. An item outside the
