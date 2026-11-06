@@ -81,7 +81,10 @@ def parse_exc(txt):
 
 
 def main():
-    d = sys.argv[1] if len(sys.argv) > 1 else "runtime"
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print("Usage: stackscan.py <dir>   (a directory holding the extracted dump artifacts)")
+        raise SystemExit(2)
+    d = sys.argv[1]
     mods = parse_mods(load(f"{d}/v5_cf9_mods.txt") or load(f"{d}/v_cf9_mods.txt"))
     exc = parse_exc(load(f"{d}/v5_cf9_exc.txt") or load(f"{d}/v_cf9_exc.txt"))
     try:

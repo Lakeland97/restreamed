@@ -24,6 +24,9 @@ def runs(data: bytes, min_chars: int):
 
 
 def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print("Usage: u16scan.py <file> [--all] [--min N]")
+        raise SystemExit(2)
     path = sys.argv[1]
     show_all = "--all" in sys.argv
     min_chars = 6

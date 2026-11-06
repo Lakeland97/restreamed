@@ -26,6 +26,9 @@ def load_ranges(path):
     return data, ranges
 
 def main():
+    if len(sys.argv) < 3 or sys.argv[1] in ("-h", "--help"):
+        print("Usage: memdump.py <dump> <addr_hex> [length_hex]")
+        raise SystemExit(2)
     path = sys.argv[1]
     addr = int(sys.argv[2], 16)
     length = int(sys.argv[3], 16) if len(sys.argv) > 3 else 0x100

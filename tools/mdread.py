@@ -127,6 +127,9 @@ def main(path, scan_lo=None, scan_hi=None):
 
 if __name__ == '__main__':
     args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help"):
+        print("Usage: mdread.py <dump> [scan_lo_hex] [scan_hi_hex]")
+        sys.exit(2)
     path = args[0]
     lo = int(args[1], 16) if len(args) > 1 else None
     hi = int(args[2], 16) if len(args) > 2 else None

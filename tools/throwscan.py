@@ -70,6 +70,9 @@ def rva_to_file(rva, image_base):
     return image_base + (rva - 0x140000000)
 
 def main():
+    if len(sys.argv) < 2 or sys.argv[1] in ("-h", "--help"):
+        print("Usage: throwscan.py <dump>")
+        raise SystemExit(2)
     path = sys.argv[1]
     data, mods, threads, exc, ranges = load(path)
     rd = mk_reader(data, ranges)
