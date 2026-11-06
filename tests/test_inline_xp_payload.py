@@ -131,6 +131,22 @@ class InlineXpPayloadTest(unittest.TestCase):
             self.assertEqual(mock_appserver._inline_level_entries(),
                              [[3, 10, []], [4, 20, []]])
 
+    def test_a_level_entry_round_trips_with_its_class_and_values(self):
+        """The element the payload builds must decode as a LevelEntry with `[level, xpRequired, rewards]`.
+
+        The mock's array element is a nested typed instance; if the serializer emitted it as a plain value the
+        client would get an object without the `+8`/`+0xc` ints the level getter reads.
+        """
+        entry = hxinflate.Decl("model.component.advancement.LevelEntry", custom=False,
+                               fields=["level", "xpRequired", "rewards"])
+        stream = hxinflate.object_stream(
+            hxinflate.Instance(values=[2, 0, []], decl=entry), purpose="game")
+        reader = hxinflate.Reader(stream)
+        reader.value()                                     # the purpose string
+        value = reader.value()
+        self.assertEqual(value["decl"].name, "model.component.advancement.LevelEntry")
+        self.assertEqual(value["body"], [2, 0, []])
+
     def test_the_knob_is_off_by_default(self):
         body = self._body({})
         self.assertNotIn(b"AdvancementComponent", body,
