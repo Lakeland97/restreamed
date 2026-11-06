@@ -225,6 +225,9 @@ Profiles:
   host-play the working host: host plus the launcher identity cave and the
             cosmetic/loading fixes, so it passes the launcher check, reaches the mock
             login and renders a joined match.
+  host-mod  host-play plus the mod-apply cave: the id the service currently serves,
+            written to a shared cell by the overlay, is applied through the game's own
+            apply path; an empty cell leaves the game's own pick alone. Experimental.
   host      the host byte patches and caves without the launcher identity or the
             cosmetic/loading fixes: identity, post-match loop, round timer, the
             login/admission byte patches and the match-data patches. Started directly
