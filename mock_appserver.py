@@ -269,7 +269,8 @@ if os.environ.get("GUL_CTX_DROP"):
 #
 #   * `trackingSessionID` (startSession) / `streamline_session_id` (postTrackingInfo),
 #   * the `hns_session` cookie the mock issues, or
-#   * `/users/<player>/...`, whose path names the identity directly.
+#   * `/users/<player>/...`, which selects a known identity by its playerIID or display name (a path
+#     naming an unknown player is a lookup miss, not a new identity — the path cannot mint one).
 #
 # Source IP is never used. `GUL_IID`/`GUL_NAME` pin one identity for single-client tests.
 # ---------------------------------------------------------------------------

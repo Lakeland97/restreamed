@@ -155,6 +155,19 @@ class SessionIdentityTest(unittest.TestCase):
         self.assertEqual(json.loads(body.decode("utf-8")), {},
                          "GUL_RCONF=0 must keep the documented empty reply")
 
+    def test_an_unknown_user_path_does_not_mint_an_identity(self):
+        """The path form selects a known identity; it must not allocate one.
+
+        Identities come from a login (session id, or the cookie), as the README describes. If an unknown path
+        minted an identity, any client could grow the table by polling arbitrary names, and the "who is this
+        request" answer would depend on a caller-chosen string rather than on the login that created it.
+        """
+        server = self._server()
+        body, _ = _get(server, "/users/stranger/updates/1")
+        user = json.loads(body.decode("utf-8"))["users"][0]
+        self.assertEqual(user["id"], "devuser")
+        self.assertNotEqual(user["id"], "stranger")
+
     def test_two_cookies_keep_two_identities(self):
         server = self._server({"GUL_COOKIES": "1", "GUL_RCONF": "1"})
         first, first_headers = self._login(server, "D" * 32)
