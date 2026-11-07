@@ -1809,7 +1809,7 @@ class Handler(BaseHTTPRequestHandler):
             slog(f"    (PGS leg {p} -> party JSON)")
             self._reply(json.dumps(pgs_party()).encode(), ctype="application/json")
             return
-        if "/remoting-config" in p and os.environ.get("GUL_RCONF"):
+        if "/remoting-config" in p and os.environ.get("GUL_RCONF") == "1":
             # The client's own field cluster puts /remoting-config beside playerIID, pgsToken,
             # accounts, displayName, accountID, provider - i.e. this leg is where the session context
             # (and its accounts) is fetched. Answer it with a JSON session context rather than {}.

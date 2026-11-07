@@ -143,6 +143,18 @@ class SessionIdentityTest(unittest.TestCase):
                          (context["playerIID"], context["playerIID"],
                           context["displayName"]))
 
+    def test_remoting_config_honours_an_explicit_zero(self):
+        """The README bills `GUL_RCONF` as `1` answering that leg with the session context.
+
+        A truthiness read made `GUL_RCONF=0` answer it too, so a user following the table could not turn the
+        reply off. The switch is spelled like the table says.
+        """
+        server = self._server({"GUL_RCONF": "0"})
+        self._login(server, "F" * 32)
+        body, _ = _get(server, "/remoting-config")
+        self.assertEqual(json.loads(body.decode("utf-8")), {},
+                         "GUL_RCONF=0 must keep the documented empty reply")
+
     def test_two_cookies_keep_two_identities(self):
         server = self._server({"GUL_COOKIES": "1", "GUL_RCONF": "1"})
         first, first_headers = self._login(server, "D" * 32)
