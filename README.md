@@ -327,7 +327,9 @@ Roadmap
 Two projects follow: a replacement for the stream layer (in-game voting plus a simulated audience
 driving the game's own mod system), and a host that is not a player. The server half of the stream layer
 exists: polls, a simulated audience, and a vote-free rotation drawn from the game's own mod catalogue,
-served behind `GUL_STREAM`, with the current profile readable at `GET stream/profile`. Applying a chosen
+with the current slot at `GET channels/<channel>/mods/current` and the effective profile at
+`GET stream/profile`. These routes answer without any knob; `GUL_STREAM=1` only adds the simulated live
+channel to the `/channels` list. Applying a chosen
 mod to a live match is the step still open. Both are described in
 [StreamLayer](https://github.com/Lakeland97/restreamed/wiki/StreamLayer) and sequenced in the
 [roadmap](https://github.com/Lakeland97/restreamed/wiki/Roadmap).
