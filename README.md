@@ -73,10 +73,11 @@ Status
 - An injected ImGui overlay (`tools/overlay`) for clients you would rather not modify on disk: it patches
   in memory only, arms the map-loaded latch so a native-travel join renders, and hosts the find/host
   panels as triggers into the game's own menus.
-- The stream layer's read side: with `GUL_STREAM` the mock serves a deterministic mod rotation
-  (four slots, one per bingo group, each mod timed by its own duration and drawn by its template
-  weight), the channel mod schedule, and a profile built from the same inputs, alongside the poll
-  endpoints the client asks for.
+- The stream layer's read side: the mock serves a deterministic mod rotation (four slots, one per bingo
+  group, each mod timed by its own duration and drawn by its template weight), the channel mod schedule and a
+  current-mod route for a client that applies one at a time, and a profile built from the same inputs, alongside
+  the poll endpoints the client asks for. These routes answer regardless of `GUL_STREAM`; the knob only adds the
+  simulated live channel to the list the home menu renders.
 - The local backend and patcher: `mock_appserver.py` speaks the client's haxe.remoting dialect and
   returns the datastore payloads that finish login and seed a session; the patcher verifies every byte
   it replaces and repairs the PE checksum; an offline suite covers the serializer, entity payloads,
@@ -184,7 +185,7 @@ session context) is the default. The knobs below exist for A/B-testing an altern
 | `GUL_OPEN_SERVER` | unset | `disabled` or `nofree` answer `getOpenServer` with those `OpenServerResponse` variants instead of `OSServer` |
 | `GUL_GAME_HOST` | `127.0.0.1` | the host a joining client is told to travel to; set it to the host's LAN address |
 | `GUL_SERVER_IP` | unset | answer `getServerIp` with `SIServer{host, port, party, playerSession, gameSession}`; unset answers `SIHostNotConnected`. Endpoint fields come from `GUL_GAME_HOST`, `GUL_GAME_PORT`, `GUL_JOIN_PARTY`, `GUL_JOIN_SESSION`, `GUL_JOIN_GAMESESSION` |
-| `GUL_STREAM` | unset | `1` enables the stream legs: polls, votes, the rotation and `stream/profile` |
+| `GUL_STREAM` | unset | `1` adds the simulated live channel to `/channels` (the home menu's stream entry); the rotation, current-mod, poll and `stream/profile` routes answer regardless |
 | `GUL_STREAM_MODE` | `tag` | allow-list the rotation draws from |
 | `GUL_STREAM_WINDOW` | `25` | poll window, seconds |
 | `GUL_STREAM_AUDIENCE` | `14` | size of the simulated audience |
