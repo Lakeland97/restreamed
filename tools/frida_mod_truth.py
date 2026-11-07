@@ -45,9 +45,14 @@ setImmediate(function () {
   const ctor = new NativeFunction(base.add(0x%X), 'pointer', ['pointer','pointer','int','int']);
   function fname(text) { const b = Memory.alloc(16); ctor(b, Memory.allocUtf16String(text), 1, 1); return b.readU32(); }
   const known = {};
-  for (const n of ["game_mod_floor_is_lava","game_mod_ragdoll","game_mod_moon_boots","game_mod_energy_drink",
-                   "game_mod_wolf_among_us","game_mod_big_head_mode","game_mod_pogo","game_mod_xray_glasses",
-                   "game_mod_sandstorm","game_mod_make_it_rain","game_mod_crabcore","game_mod_pleb"])
+  for (const n of ["game_mod_big_head_mode","game_mod_bonus_bonus","game_mod_concrete_shoes","game_mod_crabcore",
+                   "game_mod_energy_drink","game_mod_floor_is_lava","game_mod_make_it_rain","game_mod_moon_boots",
+                   "game_mod_multi_ball","game_mod_nerfed","game_mod_no_touching","game_mod_perpetual_motion",
+                   "game_mod_pleb","game_mod_pogo","game_mod_points_b_gone","game_mod_puke_town",
+                   "game_mod_ragdoll","game_mod_rise_from_your_graves","game_mod_sandstorm","game_mod_shady_business",
+                   "game_mod_shrink_ray","game_mod_slo_thuggin","game_mod_spiritual_cleansing","game_mod_stop_drop_roll",
+                   "game_mod_ugh_ice_level","game_mod_vengeful_spirits","game_mod_wolf_among_us","game_mod_xray_glasses",
+                   "game_mod_yakety_hill"])
     known[fname(n)] = n;
 
   let gameState = null;
