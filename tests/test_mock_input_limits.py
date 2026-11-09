@@ -107,6 +107,35 @@ class InputLimitsTest(unittest.TestCase):
         finally:
             stalled.close()
 
+    def test_malformed_requests_do_not_kill_a_handler(self):
+        """A bad body or path must be answered, not raise inside a thread.
+
+        The sweep behind this test is what found the negative-Content-Length defect: the mock logs decode
+        failures and keeps serving, so the only signal is a 500 or a dropped connection. These cases are the
+        corpus that exercised every op with garbage, plus odd methods and paths.
+        """
+        server = self._server({"GUL_USER_WATCH_HOLD": "0", "GUL_TRACK_DELAY": "0"})
+        bodies = [b"__x=", b"__x=Z", b"__x=" + b"a" * 5000, b"__x=y-1:x",
+                  b"__x=%ff%fe%00", b"__x=na" + b"z" * 200]
+        for op in ("doHandshake", "startSession", "postTrackingInfo", "getOpenServer", "unknownOp"):
+            for body in bodies:
+                status, _ = self._post(server.port, "/remoting/appserver/" + op, body)
+                self.assertNotEqual(status, 500, (op, body[:24]))
+        for path in ("/channels//mods", "/channels///mods/current", "/users//updates/",
+                     "/polls/create", "/wagers/", "/remoting-config", "/" + "a" * 2000):
+            for method in ("GET", "POST"):
+                request = urllib.request.Request("http://127.0.0.1:%d%s" % (server.port, path),
+                                                 data=b"" if method == "POST" else None, method=method)
+                try:
+                    with urllib.request.urlopen(request, timeout=20) as response:
+                        status = response.status
+                except urllib.error.HTTPError as exc:
+                    status = exc.code
+                self.assertNotEqual(status, 500, path)
+        with urllib.request.urlopen("http://127.0.0.1:%d/channels" % server.port, timeout=20) as response:
+            self.assertEqual(response.status, 200)
+            self.assertIn(b"live_channels", response.read())
+
     def test_the_limits_are_what_the_contract_says(self):
         # Import in-process to read the handler's own attributes, restoring the environment it sets on import.
         ROOT = os.path.dirname(TESTS_DIR)
