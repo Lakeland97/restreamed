@@ -12,6 +12,7 @@ experiment knobs (`GUL_HS_MODE`, the `GUL_DSUR_*` family) are covered by the env
 import json
 import os
 import sys
+import time
 import unittest
 import urllib.error
 import urllib.parse
@@ -20,6 +21,7 @@ import urllib.request
 TESTS_DIR = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, TESTS_DIR)
 
+import reply_walk  # noqa: E402
 import test_mock_branch_b as base  # noqa: E402
 
 
@@ -44,6 +46,46 @@ class EnvEffectTest(unittest.TestCase):
         server = base.MockStartSessionServer(extra_env or {})
         self.addCleanup(server.close)
         return server
+
+    def _handshake(self, extra_env=None):
+        server = self._server(extra_env)
+        return reply_walk.success_returnval(server.call_op("doHandshake"))
+
+    def test_the_base_url_is_used_for_the_service_fields(self):
+        value = self._handshake({"GUL_BASE": "http://10.0.0.5:8096"})
+        self.assertEqual(value["pgsServer"], "http://10.0.0.5:8096/")
+        self.assertEqual(value["pgsFrontend"], "http://10.0.0.5:8096/")
+        self.assertEqual(value["api"], "http://10.0.0.5:8096")
+
+    def test_server_environment_uses_the_knob(self):
+        self.assertEqual(self._handshake()["serverEnvironment"], "local")
+        self.assertEqual(self._handshake({"GUL_SERVER_ENV": "staging"})["serverEnvironment"], "staging")
+
+    def test_cooldown_uses_the_knob(self):
+        self.assertEqual(self._handshake()["hostedAutojoinCooldownSecs"], 10)
+        self.assertEqual(self._handshake({"GUL_COOLDOWN": "42"})["hostedAutojoinCooldownSecs"], 42)
+
+    def test_fake_player_is_written_to_the_config(self):
+        self.assertEqual(self._handshake({"GUL_FAKE_PLAYER": "bot-7"})["fakePlayerID"], "bot-7")
+
+    def _party_ids_after_two_logins(self, window):
+        """Two identities, then read the party as the second; return the ids it lists."""
+        from test_session_identity import _login_body, _post
+        server = self._server({"GUL_COOKIES": "1", "GUL_PGS_PARTY_WINDOW": window,
+                               "GUL_IID": "", "GUL_NAME": ""})   # clear the harness's single-client pins
+        _post(server, "/remoting/appserver/startSession", _login_body("W" * 32))
+        time.sleep(0.05)                      # the first identity is now older than a 0-second window
+        _body, headers = _post(server, "/remoting/appserver/startSession", _login_body("X" * 32))
+        cookie = (headers.get("Set-Cookie") or "").split(";", 1)[0]
+        request = urllib.request.Request("http://127.0.0.1:%d/parties" % server.port,
+                                         headers={"Cookie": cookie})
+        with urllib.request.urlopen(request, timeout=20) as response:
+            party = json.loads(response.read().decode("utf-8"))
+        return {user["playerIID"] for user in party["users"]}
+
+    def test_the_party_window_drops_members_that_are_too_old(self):
+        self.assertIn("player1", self._party_ids_after_two_logins("300"))
+        self.assertNotIn("player1", self._party_ids_after_two_logins("0"))
 
     def test_heartbeat_interval_comes_from_the_knob(self):
         self.assertEqual(get_json(self._server(), "/games/streamline/active_user")["interval_sec"], 30)
