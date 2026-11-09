@@ -1757,7 +1757,16 @@ class Handler(BaseHTTPRequestHandler):
                         ctype="application/json")
             return
         if p.rstrip("/").endswith("/stream/profile"):
-            body = _stream_profile()
+            try:
+                body = _stream_profile()
+            except KeyError as exc:
+                # `GUL_STREAM_MODE` can name a mode the engine has no decoded allow-list for (only `tag` is
+                # decoded). That used to raise inside the handler: the connection dropped and the service log got
+                # a traceback, with nothing telling the caller which knob was wrong.
+                reason = exc.args[0] if exc.args else str(exc)
+                slog("    (stream profile refused: %s)" % reason)
+                self._reply(json.dumps({"error": reason}).encode(), status=400, ctype="application/json")
+                return
             slog("    (stream profile -> mode=%s pool=%d window=%ds)"
                  % (body["mode"], body["pool_size"], body["window"]))
             self._reply(json.dumps(body).encode(), ctype="application/json")
