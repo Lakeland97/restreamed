@@ -332,6 +332,23 @@ def _new_identity_locked(key):
     return ident
 
 
+_LOGIN_SERIAL = 0
+_LOGIN_SERIAL_LOCK = threading.Lock()
+
+
+def _next_login_key():
+    """A key for a login that carried no session id or cookie.
+
+    It must not come from the clock: `time_ns()` can return the same value to two threads, and concurrent keyless
+    logins that share a key share an identity — twenty simultaneous logins all came out as `player1` on
+    2026-11-09. A counter under a lock is unique per process and keeps the names allocatable in order.
+    """
+    global _LOGIN_SERIAL
+    with _LOGIN_SERIAL_LOCK:
+        _LOGIN_SERIAL += 1
+        return "login:%d" % _LOGIN_SERIAL
+
+
 def _identity_for_key(key):
     with _identity_lock:
         ident = _identities.get(key)
@@ -699,7 +716,7 @@ def _select_identity(path, op):
     if op in ("startSession", "startSessionForFakePlayerID"):
         # A login with no tracking id still gets a fresh identity; the cookie issued on
         # this reply is what carries it to the next request.
-        ident = _identity_for_key("login:%d" % time.time_ns())
+        ident = _identity_for_key(_next_login_key())
         _RAW_REQ["identity"] = ident
         _RAW_REQ["send_cookie"] = True
         _RAW_REQ["identity_explicit"] = True
@@ -1401,6 +1418,14 @@ def slog(line):
         f.write(line + "\n")
 
 
+class Server(ThreadingHTTPServer):
+    # Requests run in parallel and a client (or the lab) can open several legs at once. The stdlib default of 5
+    # pending connections resets the overflow (measured 2026-11-09: 3 of 16 and 18 of 64 simultaneous connects got
+    # `ConnectionResetError`, with no server-side error at all). The accept loop is fast; this is only the ceiling
+    # for a burst, and nothing about it is per-request state.
+    request_queue_size = 128
+
+
 class Handler(BaseHTTPRequestHandler):
     # HTTP/1.0: one request per connection — the client pipelines tracking+handshake
     # on keep-alive sockets and concurrent writes INTERLEAVE responses (the "Invalid char
@@ -1855,4 +1880,4 @@ class Handler(BaseHTTPRequestHandler):
 if __name__ == "__main__":
     port = int(sys.argv[1]) if len(sys.argv) > 1 else 8099
     slog(f"--- mock_appserver (haxe.remoting speaky) on :{port} ({time.ctime()})")
-    ThreadingHTTPServer((os.environ.get("GUL_BIND", "127.0.0.1"), port), Handler).serve_forever()
+    Server((os.environ.get("GUL_BIND", "127.0.0.1"), port), Handler).serve_forever()

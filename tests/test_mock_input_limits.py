@@ -136,6 +136,39 @@ class InputLimitsTest(unittest.TestCase):
             self.assertEqual(response.status, 200)
             self.assertIn(b"live_channels", response.read())
 
+    def test_a_burst_of_connections_is_accepted(self):
+        """The listen backlog must cover a parallel burst.
+
+        Requests run in parallel and a client opens several legs at once; the stdlib default of 5 pending
+        connections reset the overflow (measured 2026-11-09: 3 of 16 and 18 of 64 simultaneous connects, with no
+        server-side error). A burst that fits the socket ceiling must all connect, and the server must still serve.
+        """
+        server = self._server()
+        barrier = threading.Barrier(48)
+        errors, socks = [], []
+
+        def one():
+            try:
+                barrier.wait()
+                socks.append(socket.create_connection(("127.0.0.1", server.port), timeout=20))
+            except OSError as exc:
+                errors.append(exc)
+
+        threads = [threading.Thread(target=one) for _ in range(48)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        try:
+            self.assertEqual(errors, [], "connections were reset during the burst")
+            self.assertEqual(len(socks), 48)
+        finally:
+            for sock in socks:
+                sock.close()
+        status, body = self._post(server.port, "/remoting/appserver/startSession", b"__x=nah")
+        self.assertEqual(status, 200)
+        self.assertTrue(body.startswith(b"hxr"))
+
     def test_the_limits_are_what_the_contract_says(self):
         # Import in-process to read the handler's own attributes, restoring the environment it sets on import.
         ROOT = os.path.dirname(TESTS_DIR)

@@ -22,6 +22,7 @@ No client and no game: the mock runs on an ephemeral port like the other offline
 import json
 import os
 import sys
+import threading
 import unittest
 import urllib.parse
 import urllib.request
@@ -154,6 +155,45 @@ class SessionIdentityTest(unittest.TestCase):
         body, _ = _get(server, "/remoting-config")
         self.assertEqual(json.loads(body.decode("utf-8")), {},
                          "GUL_RCONF=0 must keep the documented empty reply")
+
+    def _concurrent_logins(self, server, bodies):
+        """Fire all logins at one instant so the server sees the same arrival pattern as a real parallel burst."""
+        results = {}
+        barrier = threading.Barrier(len(bodies))
+
+        def one(index, body):
+            barrier.wait()
+            reply, _headers = _post(server, "/remoting/appserver/startSession", body)
+            results[index] = base._parse_reply(reply).return_val
+
+        threads = [threading.Thread(target=one, args=(index, body)) for index, body in enumerate(bodies)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        return [results[index] for index in range(len(bodies))]
+
+    def test_simultaneous_keyless_logins_get_distinct_identities(self):
+        """Keyless logins must not share an identity, even when they arrive at the same instant.
+
+        The fallback key used to be `time.time_ns()`; two threads can read the same tick, so twenty parallel
+        logins without a session id or cookie all came out as `player1` (measured 2026-11-09). The key is a
+        counter now. The collision is timing-dependent — a smaller burst can miss it — so this asserts the
+        property rather than reproducing the bug deterministically; the burst is barrier-released to make the
+        arrival pattern realistic.
+        """
+        server = self._server()
+        replies = self._concurrent_logins(server, [b"__x=n"] * 24)
+        identities = {reply["playerIID"] for reply in replies}
+        self.assertEqual(len(identities), 24, sorted(identities))
+
+    def test_simultaneous_logins_with_one_token_share_one_identity(self):
+        """The other half of the contract: one session id is one client, however many requests race."""
+        server = self._server()
+        token = "R" * 32
+        replies = self._concurrent_logins(server, [_login_body(token)] * 12)
+        identities = {reply["playerIID"] for reply in replies}
+        self.assertEqual(len(identities), 1, sorted(identities))
 
     def test_an_unknown_user_path_does_not_mint_an_identity(self):
         """The path form selects a known identity; it must not allocate one.
