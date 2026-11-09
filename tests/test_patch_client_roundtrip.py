@@ -132,6 +132,33 @@ class PatchClientRoundTripTest(unittest.TestCase):
         self.assertIn("VERDICT: FAIL", damaged.stdout)
         self.assertIn(cave.name, damaged.stdout)
 
+    def test_the_host_profile_is_byte_reproducible(self):
+        """The full working host build must be the same bytes every time.
+
+        `host` is the profile the lab builds for the listen host: every host site plus its caves. A moved site, a
+        changed cave byte or a different composition changes this hash, so the constant is the review point for
+        such a change rather than something a gate might miss. Two runs are compared first, so a non-deterministic
+        build cannot masquerade as a contract.
+        """
+        import hashlib
+
+        def digest(path):
+            h = hashlib.sha256()
+            with open(path, "rb") as handle:
+                for chunk in iter(lambda: handle.read(1 << 20), b""):
+                    h.update(chunk)
+            return h.hexdigest()
+
+        first = os.path.join(self.work, "host1.exe")
+        second = os.path.join(self.work, "host2.exe")
+        for out in (first, second):
+            result = self._run("--profile", "host", "--in", self.src, "--out", out)
+            self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(digest(first), digest(second), "the host build is not deterministic")
+        self.assertEqual(digest(first),
+                         "15d2a594c1336dcdbb862ccfcd775857e091b18b4af9ec1a6bfe0d4b72fbbd41",
+                         "the host profile's bytes changed; review the change and update the contract")
+
     def test_cave_sections_are_mapped_for_the_profiles_that_use_them(self):
         """The header half of the patcher, over every section that holds a cave body.
 
