@@ -296,7 +296,6 @@ _identities = {}          # lookup key -> identity
 _identity_by_iid = {}     # playerIID -> identity
 _identity_by_name = {}    # displayName -> identity
 _identity_seq = 0
-CURRENT_IDENTITY = None
 
 
 def _slug(text):
@@ -396,13 +395,13 @@ def party_members(window=None):
 
 
 def current_identity():
+    # Per-request identity is thread-local (`_RAW_REQ`); when a request resolved none, the fallback is the fixed
+    # default. There is deliberately no process-wide "current identity": one would hand a keyless request another
+    # client's session.
     identity = _RAW_REQ.get("identity")
     if identity is not None:
         _note_party_member(identity)
         return identity
-    if CURRENT_IDENTITY is not None:
-        _note_party_member(CURRENT_IDENTITY)
-        return CURRENT_IDENTITY
     if _IID_OVERRIDE or _NAME_OVERRIDE:
         return _override_identity()
     return _DEFAULT_IDENTITY
