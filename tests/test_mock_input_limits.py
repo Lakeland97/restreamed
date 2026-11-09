@@ -57,6 +57,25 @@ class InputLimitsTest(unittest.TestCase):
             connection.close()
         self.assertIn(b"413", reply.split(b"\r\n")[0], reply[:80])
 
+    def test_a_negative_content_length_is_a_bad_request(self):
+        """`int("-5")` parses, so the length check let it through to `read(-5)`, which raised.
+
+        The result was a traceback and a dropped connection rather than an answer. A negative declaration is
+        malformed in the same way a non-numeric one is, so it gets the same 400 — and the server keeps serving.
+        """
+        server = self._server()
+        connection = socket.create_connection(("127.0.0.1", server.port), timeout=20)
+        try:
+            connection.sendall(b"POST /remoting/appserver/startSession HTTP/1.0\r\n"
+                               b"Content-Length: -5\r\n\r\n")
+            reply = connection.recv(4096)
+        finally:
+            connection.close()
+        self.assertIn(b"400", reply.split(b"\r\n")[0], reply[:80])
+        status, body = self._post(server.port, "/remoting/appserver/startSession", b"__x=nah")
+        self.assertEqual(status, 200)
+        self.assertTrue(body.startswith(b"hxr"))
+
     def test_a_body_within_the_limit_is_served(self):
         server = self._server({"GUL_MAX_BODY": "1024"})
         status, body = self._post(server.port, "/remoting/appserver/startSession", b"__x=" + b"A" * 100)

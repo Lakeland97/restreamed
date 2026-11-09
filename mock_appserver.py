@@ -1467,6 +1467,12 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             self._reply(b"bad Content-Length\n", status=400)
             return
+        if length < 0:
+            # `int("-5")` parses; `read(-5)` then raises "read length must be non-negative or -1", which is an
+            # unhandled exception (a traceback and a dropped connection, observed 2026-11-09). A negative
+            # declaration is a malformed request, like a non-numeric one.
+            self._reply(b"bad Content-Length\n", status=400)
+            return
         if length > Handler.MAX_BODY:
             # Refuse before allocating: a "Content-Length: 999999999" from a broken or hostile client must not
             # decide how much memory this process uses.
