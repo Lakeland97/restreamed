@@ -4,6 +4,7 @@ Pure logic, no HTTP and no clock of its own — the mock passes `now` in, tests 
 catalogue numbers are the game's own template parameters (duration in seconds, selection weight), decoded
 from `templates.tplc`.
 """
+import threading
 import random
 
 # (duration, weight) per template, from ModComponent.templateData.
@@ -169,6 +170,11 @@ class StreamSession:
         self.poll = None
         self._next_id = 1
         self.history = []
+        # Requests reach one channel's session from parallel handler threads (`/poll`, `/vote`, `/mods`). The
+        # vote list, the lazy poll creation and the `random.Random` draws are shared state; every other piece of
+        # shared state in the mock is locked, so this one is too. No failure was reproduced without it (the GIL
+        # makes these short sections atomic in practice), which is why it is documented as hardening.
+        self._lock = threading.RLock()
 
     def start_poll(self, now, count=3, group=None):
         options = pick_options(self.rng, count, group)
@@ -179,25 +185,28 @@ class StreamSession:
 
     def current(self, now):
         """The poll for this instant, starting one if none is open and the last one finished."""
-        if self.poll is None:
-            return self.start_poll(now)
-        if self.poll.closed or now >= self.poll.opened_at + self.poll.duration:
-            if self.poll.winner:
-                self.history.append(self.poll)
-            return self.start_poll(now)
-        return self.poll
+        with self._lock:
+            if self.poll is None:
+                return self.start_poll(now)
+            if self.poll.closed or now >= self.poll.opened_at + self.poll.duration:
+                if self.poll.winner:
+                    self.history.append(self.poll)
+                return self.start_poll(now)
+            return self.poll
 
     def state(self, now):
-        return self.current(now).state(now)
+        with self._lock:
+            return self.current(now).state(now)
 
     def submit(self, option, now):
         """A real player's vote counts once and only while the poll is open."""
-        poll = self.current(now)
-        if poll.closed or option not in poll.options:
-            return False
-        poll._votes.append((now, option))
-        poll._votes.sort()
-        return True
+        with self._lock:
+            poll = self.current(now)
+            if poll.closed or option not in poll.options:
+                return False
+            poll._votes.append((now, option))
+            poll._votes.sort()
+            return True
 
 
 class Rotation:

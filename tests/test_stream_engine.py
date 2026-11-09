@@ -1,7 +1,9 @@
 """Offline tests for the stream-layer selection engine."""
 import os
 import sys
+import threading
 import unittest
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, os.path.join(ROOT, "tools"))
@@ -158,6 +160,40 @@ class ProfileTest(unittest.TestCase):
         with self.assertRaises(KeyError) as caught:
             se.profile(mode="bitball")
         self.assertIn("tag", str(caught.exception))
+
+
+
+class ConcurrencyTest(unittest.TestCase):
+    def test_concurrent_votes_are_all_recorded(self):
+        """One channel's session is reached from parallel handler threads; votes must all land.
+
+        The session's lock is hardening, not a fix for a reproduced failure: at 48 and 32 barrier-released threads
+        the unlocked version did not fail (the GIL keeps the short critical sections effectively atomic on this
+        machine). The hazards it closes are real if that stops being true — a `list.sort()` over a list another
+        thread appends to, two first calls each starting a poll and burning an id, and `random.Random` draws
+        interleaving across threads — and every other piece of shared state in the mock is already locked, so the
+        engine should not be the exception. This test holds the property those paths must keep.
+        """
+        session = se.StreamSession("room", seed=3, window=60, audience=8)
+        now = time.time()
+        option = session.current(now).options[0]
+        # Only the audience votes scheduled at or before `now` are part of the tally yet; the real votes all carry
+        # `at = now`, so the final total is exactly this plus 48.
+        audience_so_far = sum(session.state(now)["votes"].values())
+        accepted = []
+
+        def vote():
+            accepted.append(session.submit(option, now))
+
+        threads = [threading.Thread(target=vote) for _ in range(48)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(accepted, [True] * 48)
+        counts = session.state(now)["votes"]
+        self.assertGreaterEqual(counts[option], 48)
+        self.assertEqual(sum(counts.values()), audience_so_far + 48)
 
 
 if __name__ == "__main__":
