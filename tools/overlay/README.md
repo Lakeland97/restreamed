@@ -17,6 +17,9 @@ chain:
 Selecting a row calls the game's own `ClientTravel`, so joining does not depend on the
 server-browser of the game.
 
+The host panel's button does not host inside this client: it writes a listen ini, starts a second
+process (`Streamline.host.exe`, `-port=7777`) and joins it about 30 seconds later.
+
 ## Build
 
 Needs a zig toolchain (0.13 or newer) and the ImGui 1.90.9 sources:
