@@ -135,10 +135,11 @@ class PatchClientRoundTripTest(unittest.TestCase):
     def test_the_host_profile_is_byte_reproducible(self):
         """The full working host build must be the same bytes every time.
 
-        `host` is the profile the lab builds for the listen host: every host site plus its caves. A moved site, a
-        changed cave byte or a different composition changes this hash, so the constant is the review point for
-        such a change rather than something a gate might miss. Two runs are compared first, so a non-deterministic
-        build cannot masquerade as a contract.
+        `host` is the profile the lab builds for the listen host: every host site plus its caves. The digest is the
+        sha256 of the build whose sha1 is `41b5cd69…` — the host that ran the recorded two-client tests — so the
+        contract is "still that build", not an arbitrary snapshot. A moved
+        site, a changed cave byte or a different composition changes it, and the constant is where such a change
+        gets reviewed. Two runs are compared first, so a non-deterministic build cannot masquerade as a contract.
         """
         import hashlib
 
