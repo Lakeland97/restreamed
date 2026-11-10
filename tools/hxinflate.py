@@ -213,15 +213,33 @@ def object_stream(value, purpose=None) -> str:
 class Reader:
     """Minimal mirror of Inflater (serialization/Inflater.hx) for host-side verification."""
 
-    def __init__(self, text, skip_header=False, radix_relative=True):
+    def __init__(self, text, skip_header=False, radix_relative=True, share=None):
+        """Read one hxinflate stream.
+
+        `share` makes this reader use another reader's type cache, string table and radix tree — the library's
+        `typeInflater` relationship. Type-cache reads are relative (the tree offset carries), value reads with a
+        type inflater are absolute (`rtree.unserialize(this, typeInflater == null)`), which is what
+        `radix_relative=False` selects. Without `share` the reader builds its own state, as before.
+        """
         self.s = text
         self.i = 0
+        if share is not None:
+            self.table = share.table
+            self.types = share.types
+            self.rnodes = share.rnodes
+            self.rlast = 0
+            self.radix_relative = radix_relative
+            self.trace = False
+            self.depth = 0
+            self.version = share.version
+            self.skip_code = share.skip_code
+            self.purpose = self.value() if self.version >= 2 else None
+            return
         self.table = []
         self.types = []
         self.rnodes = [(None, 0)]  # radix tree: id 0 is the root, ids follow creation order
         self.rlast = 0
         self.radix_relative = radix_relative
-        self.etypes = []
         self.trace = False         # set True to print each token with its position
         self.depth = 0
         if skip_header:
@@ -299,7 +317,10 @@ class Reader:
         assert self.s[self.i] == ":", "Invalid type format (enum use index)"
         self.i += 1
         info = {"name": name, "version": version, "useIndex": use_index}
-        self.etypes.append(info)
+        # One cache, as in the library: classes, enum infos and enum value infos are appended in parse order, and
+        # `_<idx>`/`T<idx>` both index it. A separate enum list made `_21` read the wrong entry — with the wrong
+        # parameter count — and desynced the first real template asset.
+        self.types.append(info)
         return info
 
     def enum_value_tagged(self):
@@ -324,7 +345,7 @@ class Reader:
             idx = self._digits()
             assert self.s[self.i] == ":", "Invalid enum type reference"
             self.i += 1
-            info = self.etypes[idx]
+            info = self.types[idx]
         else:
             assert c == "=", "Invalid enum type"
             self.i += 1
@@ -340,7 +361,7 @@ class Reader:
             info["numParams"] = self._digits()
             assert self.s[self.i] == ":", "Invalid type format (enum num params)"
             self.i += 1
-            self.etypes.append(info)
+            self.types.append(info)
         params = [self.value() for _ in range(info.get("numParams", 0))]
         return {"enum": info.get("construct"), "params": params}
 
@@ -520,7 +541,13 @@ class Reader:
         return self.value()
 
     def read_typeinfo_loop(self):
-        """Mirror Inflater.inflateTypeInfo: the rest of a type-info stream must be declarations."""
+        """Mirror Inflater.inflateTypeInfo: the rest of a type-info stream must be declarations.
+
+        The loop's token set is the one in the library: class info (`V`/`W`), raw and URL-encoded strings (`Y`/`y`),
+        radix-tree strings (`!`/`#`/`~`, relative here because type-info reads have no typeInflater) and the two
+        enum-info forms (`|`/`=`). The first version handled only `V`/`W`/`Y`, which is why it failed on the first
+        real asset (`unexpected code in typeinfo: #`).
+        """
         while self.i < len(self.s):
             c = self.s[self.i]
             if c in ("V", "W"):
@@ -532,6 +559,27 @@ class Reader:
                 self.i += 1
                 self.table.append(self.s[self.i:self.i + n])
                 self.i += n
+            elif c in ("!", "#", "~"):
+                self.radix(relative=self.radix_relative)
+            elif c == "y":
+                self.value()
+            elif c == "|":
+                self.enum_info()
+            elif c == "=":
+                self.i += 1
+                info = {"construct": self.value()}
+                assert self.s[self.i] == ":", "Invalid type format (enum constructor)"
+                self.i += 1
+                info["typeIndex"] = self._digits()
+                assert self.s[self.i] == ":"
+                self.i += 1
+                info["enumIndex"] = self._digits()
+                assert self.s[self.i] == ":"
+                self.i += 1
+                info["numParams"] = self._digits()
+                assert self.s[self.i] == ":"
+                self.i += 1
+                self.types.append(info)
             else:
                 raise AssertionError("unexpected code in typeinfo: %s" % c)
         return self.types
