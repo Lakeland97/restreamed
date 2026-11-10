@@ -65,7 +65,8 @@ def fix(path: str) -> int:
     old = struct.unpack_from("<I", data, csum_off)[0]
     total = compute_checksum(data)
     struct.pack_into("<I", data, csum_off, total)
-    open(path, "wb").write(data)
+    with open(path, "wb") as handle:
+        handle.write(data)
     print("checksum %#x -> %#x  %s" % (old, total, path))
     return 0
 

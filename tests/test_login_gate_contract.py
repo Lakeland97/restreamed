@@ -113,8 +113,10 @@ class DefaultConfigurationTest(unittest.TestCase):
     def test_a_bare_launch_returns_the_working_login_reply(self):
         """No environment: the server still answers startSession with the datastore entity."""
         import subprocess, sys, time, urllib.request, socket
+        sys.path.insert(0, TESTS_DIR)
+        from test_mock_branch_b import _free_port      # a fixed port collides with a stray run
         env = {k: v for k, v in os.environ.items() if not k.startswith("GUL_")}
-        port = 8791
+        port = _free_port()
         env["GUL_LOG"] = os.path.join(tempfile.gettempdir(), "mock_defaults.log")
         proc = subprocess.Popen([sys.executable, "mock_appserver.py", str(port)], env=env,
                                 cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
@@ -132,6 +134,11 @@ class DefaultConfigurationTest(unittest.TestCase):
             body = urllib.request.urlopen(req, timeout=5).read()
         finally:
             proc.terminate()
+            try:
+                proc.wait(timeout=10)                  # reap it: an unreaped child outlives the test
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait()
         self.assertGreater(len(body), 1000, "default reply is the short form: %d bytes" % len(body))
         text = body.decode("latin-1")
         self.assertIn("entityTypeInfo", text)

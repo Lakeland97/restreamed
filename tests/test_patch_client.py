@@ -590,7 +590,8 @@ class DetectTest(CliTest):
         out = os.path.join(tmp, "Streamline.out.exe")
         with open(out, "wb") as fh:
             fh.write(fixture())
-        data = bytearray(open(out, "rb").read())
+        with open(out, "rb") as fh:
+            data = bytearray(fh.read())
         pc.apply_patches(data, pc.PROFILES[profile])
         with open(out, "wb") as fh:
             fh.write(data)
