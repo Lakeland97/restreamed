@@ -39,6 +39,15 @@ class RequestDecodeTest(unittest.TestCase):
         self.assertEqual(drm["index"], 3)
         self.assertEqual(drm["args"], ["restrea1"])
 
+    def test_enum_by_constructor_name(self):
+        # The `w` form the mock's own handshakes emit (the client accepts it): type name and
+        # constructor name as serialized strings, then ':' + argument count + arguments.
+        serializer = haxe_ser.Serializer()
+        body = ("w" + serializer.value("model.Result") + serializer.value("Success")
+                + ":1" + serializer.value(42))
+        self.assertEqual(haxe_ser.unserialize(body),
+                         {"__enum__": "model.Result", "ctor": "Success", "args": [42]})
+
     def test_negative_int(self):
         # Haxe writes negative ints as i-<digits>; the old reader consumed digits only.
         self.assertEqual(haxe_ser.unserialize("i-1"), -1)

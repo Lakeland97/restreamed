@@ -438,12 +438,22 @@ class Unserializer:
             return m
         if c == "x":
             return {"__exception__": self.unserialize()}
+        if c == "w":
+            # Enum by NAME, the form the mock's own handshakes emit (and the client accepts):
+            #   w <type name string> <constructor name string> : <arg count> [args...]
+            # e.g. "w" + "model.Result" + "Success" + ":1" + <value>.
+            # Distinct from `j`, which carries a numeric constructor index instead of a name.
+            type_name = self.unserialize()
+            constructor = self.unserialize()
+            if self.d[self.i] == ":":
+                self.i += 1
+            argc = self._read_int_plain()
+            return {"__enum__": type_name, "ctor": constructor,
+                    "args": [self.unserialize() for _ in range(argc)]}
         if c == "j":
-            # Haxe 3 enum-by-name where the type name is itself a serialized string:
+            # Enum by INDEX, type name as a serialized string:
             #   j <string name> : <constructor index> : <arg count> [args...]
             # Captured equipCosmeticItems body: "j y31:model.game.seek.CharacterGender : 1 : 0".
-            # `w` (raw name, no nested string) is the other by-name form; both appear in UE4-era
-            # clients, so the token must be handled or every enum-bearing request logs DECODE FAILED.
             name = self.unserialize()
             if self.d[self.i] == ":":
                 self.i += 1
