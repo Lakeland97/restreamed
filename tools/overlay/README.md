@@ -43,13 +43,25 @@ is required.
 3. Load the DLL into the running client (any injector) and call `ovl_show(1)`, or press
    Insert once loaded.
 
-`overlay.ini` (next to the working directory) sets the registry:
+## Configuration
+
+The DLL reads one ini file at startup and re-reads it every ten seconds. The path is the
+`OVERLAY_INI` environment variable; when it is unset the file is `C:\Users\Public\overlay.ini`
+(not the working directory). One `name=value` per line:
 
 ```
+# community-server registry (the server panel)
 host=192.168.64.1
 port=8099
 path=/servers.txt
+
+# stream service (the mod poller); an empty stream_channel disables the poller
+stream_host=192.168.64.1
+stream_port=8096
+stream_channel=
 ```
+
+The registry is re-fetched every ten seconds; the stream poll runs once a second.
 
 Registry format, one server per line:
 
