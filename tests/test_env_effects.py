@@ -5,8 +5,9 @@ The README's table says what each knob does; a knob that is read but ignored rea
 table, and only the reply shows the difference. These tests pin one observable per knob, with the default as the
 control wherever the value is not otherwise obvious.
 
-Only knobs whose effect is visible without a client are here (JSON legs and one remoting op). The reply-shape
-experiment knobs (`GUL_HS_MODE`, the `GUL_DSUR_*` family) are covered by the envelope tests instead.
+Only knobs whose effect is visible without a client are here (JSON legs and remoting ops). The reply-shape
+knobs are covered here too: the envelope tests cover their *switch* semantics (`_env_flag`), not what changes in
+the reply, and the data-store template family had an effect test missing for its empty-template switch.
 """
 
 import json
@@ -50,6 +51,38 @@ class EnvEffectTest(unittest.TestCase):
     def _handshake(self, extra_env=None):
         server = self._server(extra_env)
         return reply_walk.success_returnval(server.call_op("doHandshake"))
+
+    def test_the_handshake_error_mode_serves_a_result_error(self):
+        """`GUL_HS_MODE=error` replaces the handshake result with a marker-bearing Result.Error."""
+        default = self._server().call_op("doHandshake")
+        self.assertIn(b"Success", default)
+        marker = self._server({"GUL_HS_MODE": "error"}).call_op("doHandshake")
+        self.assertIn(b"MARKER123", marker)
+        self.assertIn(b"Error", marker)
+
+    def test_the_empty_template_knob_drops_component_definitions(self):
+        """`GUL_DSUR_HX_EMPTY_TEMPLATE=1` sends the template stream with no component definitions."""
+        def template_definitions(empty):
+            env = {"GUL_DSUR_HX_TEMPLATE_ELEMENTS": "1"}
+            if empty:
+                env["GUL_DSUR_HX_EMPTY_TEMPLATE"] = "1"
+            reply = base._parse_reply(self._server(env).call_op("startSession"))
+            _purpose, value = base._parse_element(reply.updated_entities[0])
+            return value["body"][0]
+
+        self.assertTrue(template_definitions(False))
+        self.assertEqual(template_definitions(True), {})
+
+    def test_the_request_timeout_drops_a_silent_connection(self):
+        """`GUL_REQUEST_TIMEOUT=1` closes a connection that opens and never sends a request."""
+        import socket
+
+        server = self._server({"GUL_REQUEST_TIMEOUT": "1"})
+        sock = socket.create_connection(("127.0.0.1", server.port), timeout=10)
+        self.addCleanup(sock.close)
+        started = time.monotonic()
+        self.assertEqual(sock.recv(1), b"")
+        self.assertLess(time.monotonic() - started, 8)
 
     def test_the_base_url_is_used_for_the_service_fields(self):
         value = self._handshake({"GUL_BASE": "http://10.0.0.5:8096"})
