@@ -145,10 +145,26 @@ def verdict(state):
     return "neither a banner nor an array change — the run saw no mod"
 
 
+USAGE = "usage: frida_mod_truth.py [seconds]   (the watch window; no other argument is read)"
+
+
+def parse_args(argv):
+    """(seconds, error). Extra positionals are rejected: silently ignoring one cost a stale recipe."""
+    if len(argv) > 2:
+        return None, USAGE
+    try:
+        return (int(argv[1]) if len(argv) > 1 else 240), None
+    except ValueError:
+        return None, "seconds must be an integer\n" + USAGE
+
+
 def main():
     import frida
 
-    seconds = int(sys.argv[1]) if len(sys.argv) > 1 else 240
+    seconds, error = parse_args(sys.argv)
+    if error:
+        print(error)
+        return 2
     device = frida.get_device_manager().add_remote_device(DEV)
     target = next((p for p in device.enumerate_processes() if "streamline" in p.name.lower()), None)
     if target is None:

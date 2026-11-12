@@ -47,6 +47,20 @@ def syntax_error(text):
 
 
 @unittest.skipUnless(truth is not None, "mod-truth probe unavailable")
+class ArgumentTest(unittest.TestCase):
+    def test_only_the_window_is_accepted(self):
+        self.assertEqual(truth.parse_args(["tool"]), (240, None))
+        self.assertEqual(truth.parse_args(["tool", "60"]), (60, None))
+        seconds, error = truth.parse_args(["tool", "60", "host"])
+        self.assertIsNone(seconds)
+        self.assertIn("usage", error)
+
+    def test_a_non_numeric_window_is_rejected(self):
+        seconds, error = truth.parse_args(["tool", "soon"])
+        self.assertIsNone(seconds)
+        self.assertIn("integer", error)
+
+
 class ModTruthTest(unittest.TestCase):
     def test_every_placeholder_is_substituted(self):
         script = truth.build_script(120)
