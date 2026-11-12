@@ -27,8 +27,9 @@ Host and join
        GameDefaultMap=/Game/Maps/GameCon/GameCon_PersistentLevel
        LocalMapOptions=?game=Tag?listen?IsHost=true?PlayerSessionID=host-1
 
-   Use `host-play`, not `host`: the host also has to pass the launcher check and reach the mock
-   login, and the bare `host` set stops at that check. Pass the map file on the command line with
+   Use `host-play`, not `host`: the bare `host` set stops at the launcher identity check, and
+   `host-play` adds the DRM cave and the HOME-model and loading-screen fixes. The host does not log
+   in to the mock; its listen match starts from the boot URL above. Pass the map file on the command line with
    `-EngineIni=<path>\listen.ini` — a fresh copy may not have the config directory the engine reads,
    and the flag works regardless.
 
