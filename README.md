@@ -5,7 +5,7 @@ Community server and tooling for Streamline (Proletariat, 2016), a 16-player are
 whose official servers shut down in April 2018. This project implements the backend the
 client expects and documents the client patches needed to run it locally.
 
-The tooling runs on Python 3.9 or newer with only the standard library. The game is Windows-only; the
+The mock, the tests and the rest of the tooling run on Python 3.9 or newer with only the standard library. The two optional Frida probes (`tools/frida_mod_banner_watch.py`, `tools/frida_mod_truth.py`) need the `frida` Python package when run; they import it inside `main()`, so the rest of the toolset never needs it. The game is Windows-only; the
 patchers edit files, so they run on any platform with Python.
 
 Host and join

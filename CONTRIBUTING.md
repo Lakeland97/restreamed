@@ -8,7 +8,7 @@
 
 ## Running things
 
-Plain Python 3.9+, no third-party dependencies.
+Plain Python 3.9+ for the mock and the tests, with no third-party dependencies. The optional Frida probes under `tools/` need the `frida` package when run.
 
   python3 mock_appserver.py 8096
   python3 tests/run_all.py
