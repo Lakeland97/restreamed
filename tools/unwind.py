@@ -30,10 +30,14 @@ import os
 import struct
 import sys
 
-if len(sys.argv) != 4:
-    sys.stderr.write('usage: unwind.py <Streamline.exe> <dump.dmp> <out.txt>\n')
-    raise SystemExit(2)
-EXE_PATH, DMP_PATH, OUT_PATH = sys.argv[1], sys.argv[2], sys.argv[3]
+USAGE = 'usage: unwind.py <Streamline.exe> <dump.dmp> <out.txt>\n'
+EXE_PATH = DMP_PATH = OUT_PATH = None      # set by main() from argv
+
+def parse_args(argv):
+    if len(argv) != 4:
+        sys.stderr.write(USAGE)
+        raise SystemExit(2)
+    return argv[1], argv[2], argv[3]
 
 IMAGE_BASE = 0x140000000      # preferred image base of Streamline.exe
 MAX_FRAMES = 40
@@ -365,6 +369,8 @@ class Dump(object):
 # unwinding
 # --------------------------------------------------------------------------
 def main():
+    global EXE_PATH, DMP_PATH, OUT_PATH
+    EXE_PATH, DMP_PATH, OUT_PATH = parse_args(sys.argv)
     pe = PE(EXE_PATH)
     dump = Dump(DMP_PATH)
     exc = dump.exc

@@ -59,4 +59,5 @@ def main():
             print('%016x: %-47s %s' % (cur + i, hexs, asc))
         cur += len(chunk)
 
-main()
+if __name__ == "__main__":
+    main()

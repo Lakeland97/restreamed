@@ -133,4 +133,5 @@ def main():
                 fva = IMAGE_BASE + (v - tgt_base)
                 print('  [%016x] %016x  fileVA=%012x' % (base + i, v, fva))
 
-main()
+if __name__ == "__main__":
+    main()
